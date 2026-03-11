@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>🚇 BKK Transit</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#0B0E18;font-family:'Sarabun',sans-serif;color:#E2E8F0;min-height:100dvh}
+.wrap{max-width:440px;margin:0 auto;padding:10px 14px 60px}
+.card{background:rgba(18,22,36,.7);border-radius:14px;border:1px solid rgba(100,116,139,.07)}
+.mono{font-family:'SF Mono','JetBrains Mono',monospace}
+.tiny{font-size:9px;color:#475569}
+.btn{border:none;cursor:pointer;font-family:inherit;transition:all .15s}
+input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(.6)}
+.flash{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;padding:8px 20px;border-radius:10px;font-size:12px;font-weight:600;animation:pop .3s}
+.flash-ok{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:#4ADE80}
+.flash-err{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#FCA5A5}
+@keyframes pop{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.panel{background:#1E293B;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto}
+.editable{cursor:pointer;border-bottom:1.5px dashed rgba(250,204,21,.35)}
+.editable:active{border-color:#FACC15}
+.ed-arrive{border-bottom-color:rgba(96,165,250,.35)}
+.chip{display:inline-flex;align-items:center;gap:2px;padding:3px 7px;border-radius:5px;font-size:10px;font-family:monospace;background:rgba(99,102,241,.08);color:#A5B4FC;border:1px solid rgba(99,102,241,.12);margin:1px}
+.st-btn{width:100%;padding:10px 12px;border-radius:10px;text-align:left;background:rgba(18,22,36,.5);border:1px solid rgba(100,116,139,.08);color:#CBD5E1;font-size:13px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.st-btn:active{background:rgba(99,102,241,.12)}
+.st-btn .xfer{font-size:9px;color:#F59E0B;margin-left:4px}
+.search-input{width:100%;padding:10px 14px;border-radius:10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.12);color:#F1F5F9;font-size:14px;outline:none;margin-bottom:10px}
+.line-tab{padding:8px 14px;border-radius:8px;font-size:11px;font-weight:600;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+// ================================================================
+// DATA: ALL STATIONS + CONNECTIONS
+// ================================================================
+const LINES={
+  purple:{name:'สายสีม่วง',color:'#8B5CF6',stations:[
+    'คลองบางไผ่','ตลาดบางใหญ่','สามแยกบางใหญ่','บางพลู','บางรักใหญ่','บางรักน้อยท่าอิฐ','ไทรม้า','สะพานพระนั่งเกล้า','แยกนนทบุรี 1','บางกระสอ','ศูนย์ราชการนนทบุรี','กระทรวงสาธารณสุข','แยกติวานนท์','วงศ์สว่าง','บางซ่อน','เตาปูน'
+  ]},
+  blue:{name:'สายสีน้ำเงิน',color:'#2563EB',isLoop:true,stations:[
+    'หลักสอง','บางแค','ภาษีเจริญ','เพชรเกษม 48','บางหว้า','บางไผ่','ท่าพระ','อิสรภาพ','สนามไชย','สามยอด','วัดมังกร','หัวลำโพง','สามย่าน','สีลม','ลุมพินี','คลองเตย','ศูนย์การประชุมฯ สิริกิติ์','สุขุมวิท','เพชรบุรี','พระราม 9','ศูนย์วัฒนธรรมฯ','ห้วยขวาง','สุทธิสาร','รัชดาภิเษก','ลาดพร้าว','พหลโยธิน','สวนจตุจักร','กำแพงเพชร','บางซื่อ','เตาปูน','บางโพ','บางอ้อ','บางพลัด','สิรินธร','บางยี่ขัน','บางขุนนนท์','ไฟฉาย','จรัญฯ 13'
+    // loops back to ท่าพระ (index 6)
+  ]},
+  green_sukhumvit:{name:'สายสีเขียว (สุขุมวิท)',color:'#16A34A',stations:[
+    'คูคต','แยก คปอ.','พิพิธภัณฑ์กองทัพอากาศ','รพ.ภูมิพลฯ','สะพานใหม่','สายหยุด','พหลโยธิน 59','วัดพระศรีมหาธาตุ','กรมทหารราบที่ 11','บางบัว','กรมป่าไม้','ม.เกษตรศาสตร์','เสนานิคม','รัชโยธิน','พหลโยธิน 24','ห้าแยกลาดพร้าว','หมอชิต','สะพานควาย','อารีย์','สนามเป้า','อนุสาวรีย์ชัยฯ','พญาไท','ราชเทวี','สยาม','ชิดลม','เพลินจิต','นานา','อโศก','พร้อมพงษ์','ทองหล่อ','เอกมัย','พระโขนง','อ่อนนุช','บางจาก','ปุณณวิถี','อุดมสุข','บางนา','แบริ่ง','สำโรง','ปู่เจ้า','ช้างเอราวัณ','โรงเรียนนายเรือ','ปากน้ำ','ศรีนครินทร์','แพรกษา','สายลวด','เคหะฯ'
+  ]},
+  green_silom:{name:'สายสีเขียว (สีลม)',color:'#16A34A',stations:[
+    'สนามกีฬาแห่งชาติ','สยาม','ราชดำริ','ศาลาแดง','ช่องนนทรี','เซนต์หลุยส์','สุรศักดิ์','สะพานตากสิน','กรุงธนบุรี','วงเวียนใหญ่','โพธิ์นิมิตร','ตลาดพลู','วุฒากาศ','บางหว้า'
+  ]}
+};
+
+// Interchange map: stationA_lineA -> [{stationB, lineB, walkMin}]
+const XFERS=[
+  {a:'เตาปูน',la:'purple',b:'เตาปูน',lb:'blue',walk:4},
+  {a:'สวนจตุจักร',la:'blue',b:'หมอชิต',lb:'green_sukhumvit',walk:6},
+  {a:'พหลโยธิน',la:'blue',b:'ห้าแยกลาดพร้าว',lb:'green_sukhumvit',walk:5},
+  {a:'สุขุมวิท',la:'blue',b:'อโศก',lb:'green_sukhumvit',walk:4},
+  {a:'สีลม',la:'blue',b:'ศาลาแดง',lb:'green_silom',walk:4},
+  {a:'บางหว้า',la:'blue',b:'บางหว้า',lb:'green_silom',walk:3},
+  {a:'สยาม',la:'green_sukhumvit',b:'สยาม',lb:'green_silom',walk:2},
+];
+
+// Travel time per station (default ~2 min, adjustable)
+const DEFAULT_STATION_TIME=2;
+
+// ================================================================
+// SCHEDULE DATA (same freq-based generation as before)
+// ================================================================
+const toM=t=>{const[h,m]=t.split(':').map(Number);return h*60+m};
+const fM=m=>{const t=((m%1440)+1440)%1440;return`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`};
+function genTrains(first,last,slots){const r=[];const f=toM(first),l=toM(last)+(toM(last)<f?1440:0);let c=f;while(c<=l){r.push(fM(c%1440));let fq=8;for(const s of slots)if((c%1440)>=toM(s.from)&&(c%1440)<toM(s.to)){fq=s.iv;break;}c+=fq;}return[...new Set(r)].sort((a,b)=>toM(a)-toM(b));}
+function calibrate(gen,anchors,deleted){const del=new Set(deleted||[]);const base=gen.filter(t=>!del.has(t));if(!anchors||!anchors.length)return base;const sa=[...anchors].sort((a,b)=>toM(a.orig)-toM(b.orig));const res=[];for(const t of base){const tm=toM(t);let bef=null,aft=null;for(const a of sa){if(toM(a.orig)<=tm)bef=a;if(toM(a.orig)>=tm&&!aft)aft=a;}let off=0;if(bef&&aft&&bef!==aft){const bo=toM(bef.orig),ao=toM(aft.orig);off=Math.round((toM(bef.real)-bo)+(((toM(aft.real)-ao)-(toM(bef.real)-bo))*((tm-bo)/(ao-bo))));}else if(bef)off=toM(bef.real)-toM(bef.orig);else if(aft)off=toM(aft.real)-toM(aft.orig);res.push(fM(tm+off));}for(const a of sa)if(!res.includes(a.real))res.push(a.real);return[...new Set(res)].sort((a,b)=>toM(a)-toM(b));}
+function findNext(trains,after){const am=toM(after);for(const t of trains)if(toM(t)>=am)return t;return null;}
+
+const SCHEDULES={
+  purple_fwd:{weekday:genTrains("05:30","22:56",[{from:"05:30",to:"06:30",iv:7},{from:"06:30",to:"08:30",iv:5},{from:"08:30",to:"09:30",iv:6},{from:"09:30",to:"17:00",iv:7},{from:"17:00",to:"20:00",iv:5},{from:"20:00",to:"21:00",iv:6},{from:"21:00",to:"23:00",iv:10}]),weekend:genTrains("06:00","22:56",[{from:"06:00",to:"23:00",iv:10}])},
+  purple_rev:{weekday:genTrains("06:00","23:33",[{from:"06:00",to:"06:30",iv:7},{from:"06:30",to:"08:30",iv:5},{from:"08:30",to:"09:30",iv:6},{from:"09:30",to:"17:00",iv:7},{from:"17:00",to:"20:00",iv:5},{from:"20:00",to:"21:00",iv:6},{from:"21:00",to:"23:33",iv:10}]),weekend:genTrains("06:18","23:33",[{from:"06:18",to:"23:33",iv:10}])},
+  blue_cw:{weekday:genTrains("05:30","23:30",[{from:"05:30",to:"07:00",iv:5},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"09:30",iv:7},{from:"09:30",to:"17:00",iv:5},{from:"17:00",to:"19:30",iv:4},{from:"19:30",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}]),weekend:genTrains("06:00","23:30",[{from:"06:00",to:"10:00",iv:8},{from:"10:00",to:"19:00",iv:7},{from:"19:00",to:"24:00",iv:8}])},
+  blue_ccw:{weekday:genTrains("05:30","23:30",[{from:"05:30",to:"07:00",iv:5},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"09:30",iv:7},{from:"09:30",to:"17:00",iv:5},{from:"17:00",to:"19:30",iv:4},{from:"19:30",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}]),weekend:genTrains("06:00","23:30",[{from:"06:00",to:"10:00",iv:8},{from:"10:00",to:"19:00",iv:7},{from:"19:00",to:"24:00",iv:8}])},
+  green_north:{weekday:genTrains("05:15","23:50",[{from:"05:15",to:"06:00",iv:6},{from:"06:00",to:"07:00",iv:5},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"09:30",iv:4},{from:"09:30",to:"16:00",iv:7},{from:"16:00",to:"17:00",iv:5},{from:"17:00",to:"20:00",iv:3},{from:"20:00",to:"21:00",iv:5},{from:"21:00",to:"22:00",iv:6},{from:"22:00",to:"24:00",iv:8}]),weekend:genTrains("05:55","23:50",[{from:"05:55",to:"08:00",iv:7},{from:"08:00",to:"11:00",iv:6},{from:"11:00",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}])},
+  green_south:{weekday:genTrains("05:31","23:50",[{from:"05:31",to:"06:00",iv:6},{from:"06:00",to:"07:00",iv:5},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"09:30",iv:4},{from:"09:30",to:"16:00",iv:7},{from:"16:00",to:"17:00",iv:5},{from:"17:00",to:"20:00",iv:3},{from:"20:00",to:"21:00",iv:5},{from:"21:00",to:"22:00",iv:6},{from:"22:00",to:"24:00",iv:8}]),weekend:genTrains("05:55","23:50",[{from:"05:55",to:"08:00",iv:7},{from:"08:00",to:"11:00",iv:6},{from:"11:00",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}])},
+  green_silom_fwd:{weekday:genTrains("05:30","23:50",[{from:"05:30",to:"07:00",iv:6},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"16:00",iv:6},{from:"16:00",to:"20:00",iv:3},{from:"20:00",to:"24:00",iv:7}]),weekend:genTrains("06:00","23:50",[{from:"06:00",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}])},
+  green_silom_rev:{weekday:genTrains("05:30","23:50",[{from:"05:30",to:"07:00",iv:6},{from:"07:00",to:"09:00",iv:3},{from:"09:00",to:"16:00",iv:6},{from:"16:00",to:"20:00",iv:3},{from:"20:00",to:"24:00",iv:7}]),weekend:genTrains("06:00","23:50",[{from:"06:00",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}])},
+};
+
+// ================================================================
+// ROUTE ENGINE
+// ================================================================
+function stationCount(line,fromSt,toSt){
+  const sts=LINES[line].stations;
+  const fi=sts.indexOf(fromSt),ti=sts.indexOf(toSt);
+  if(fi<0||ti<0)return 999;
+  if(LINES[line].isLoop){
+    const n=sts.length;const fwd=(ti-fi+n)%n;const bwd=(fi-ti+n)%n;
+    return{count:Math.min(fwd,bwd),dir:fwd<=bwd?'fwd':'rev',fwd,rev:bwd};
+  }
+  return{count:Math.abs(ti-fi),dir:ti>fi?'fwd':'rev'};
+}
+
+function getSchedKey(line,dir){
+  if(line==='purple')return dir==='fwd'?'purple_fwd':'purple_rev';
+  if(line==='blue')return dir==='fwd'?'blue_cw':'blue_ccw';
+  if(line==='green_sukhumvit')return dir==='fwd'?'green_south':'green_north';
+  if(line==='green_silom')return dir==='fwd'?'green_silom_fwd':'green_silom_rev';
+  return'purple_fwd';
+}
+
+function findRoute(fromSt,fromLine,toSt,toLine){
+  // Same line
+  if(fromLine===toLine){
+    const sc=stationCount(fromLine,fromSt,toSt);
+    return[{type:'train',line:fromLine,from:fromSt,to:toSt,stations:sc.count,dir:sc.dir}];
+  }
+  // Different lines — find best interchange
+  let best=null,bestTime=Infinity;
+  for(const x of XFERS){
+    // Try both directions of interchange
+    for(const swap of[false,true]){
+      const xa=swap?x.b:x.a, xla=swap?x.lb:x.la;
+      const xb=swap?x.a:x.b, xlb=swap?x.la:x.lb;
+      if(xla===fromLine&&xlb===toLine){
+        const s1=stationCount(fromLine,fromSt,xa);
+        const s2=stationCount(toLine,xb,toSt);
+        const time=s1.count*DEFAULT_STATION_TIME+x.walk+s2.count*DEFAULT_STATION_TIME;
+        if(time<bestTime){bestTime=time;best={x,xa,xla,xb,xlb,s1,s2,walk:x.walk};}
+      }
+    }
+  }
+  // Try 2 interchanges (3 legs)
+  if(!best){
+    for(const x1 of XFERS){
+      for(const sw1 of[false,true]){
+        const a1=sw1?x1.b:x1.a,la1=sw1?x1.lb:x1.la,b1=sw1?x1.a:x1.b,lb1=sw1?x1.la:x1.lb;
+        if(la1!==fromLine)continue;
+        for(const x2 of XFERS){
+          for(const sw2 of[false,true]){
+            const a2=sw2?x2.b:x2.a,la2=sw2?x2.lb:x2.la,b2=sw2?x2.a:x2.b,lb2=sw2?x2.la:x2.lb;
+            if(la2!==lb1||lb2!==toLine)continue;
+            const s1=stationCount(fromLine,fromSt,a1);
+            const s2=stationCount(lb1,b1,a2);
+            const s3=stationCount(toLine,b2,toSt);
+            const time=s1.count*2+x1.walk+s2.count*2+x2.walk+s3.count*2;
+            if(time<bestTime){bestTime=time;best={multi:true,legs:[
+              {type:'train',line:fromLine,from:fromSt,to:a1,stations:s1.count,dir:s1.dir},
+              {type:'xfer',stationA:a1,stationB:b1,walk:x1.walk},
+              {type:'train',line:lb1,from:b1,to:a2,stations:s2.count,dir:s2.dir},
+              {type:'xfer',stationA:a2,stationB:b2,walk:x2.walk},
+              {type:'train',line:toLine,from:b2,to:toSt,stations:s3.count,dir:s3.dir}
+            ]};}
+          }}
+      }}
+  }
+  if(!best)return null;
+  if(best.multi)return best.legs;
+  return[
+    {type:'train',line:fromLine,from:fromSt,to:best.xa,stations:best.s1.count,dir:best.s1.dir},
+    {type:'xfer',stationA:best.xa,stationB:best.xb,walk:best.walk},
+    {type:'train',line:toLine,from:best.xb,to:toSt,stations:best.s2.count,dir:best.s2.dir}
+  ];
+}
+
+// ================================================================
+// STATE
+// ================================================================
+const STORE_KEY='bkk-transit-v4';
+const SESS_KEY='bkk-transit-sess';
+const _n=new Date();const _isWk=_n.getDay()===0||_n.getDay()===6;
+let S={
+  page:'home', // home|select_from|select_to|calc
+  time:fM(_n.getHours()*60+_n.getMinutes()),
+  wknd:_isWk,
+  fromSt:null,fromLine:null,toSt:null,toLine:null,
+  route:null,
+  patterns:[null,null,null], // [{name,fromSt,fromLine,toSt,toLine}]
+  cfg:{stationTime:2},
+  calib:{},travelLog:{},
+  showCfg:false,
+  selectTarget:null, // 'from'|'to'
+  searchQ:'',filterLine:null,
+};
+
+function load(){
+  try{
+    const r=localStorage.getItem(STORE_KEY);
+    if(r){const d=JSON.parse(r);S.patterns=d.patterns||S.patterns;S.cfg=d.cfg||S.cfg;S.calib=d.calib||{};S.travelLog=d.travelLog||{};}
+    const ss=localStorage.getItem(SESS_KEY);
+    if(ss){const d=JSON.parse(ss);if(d.at&&Date.now()-d.at<3*3600000){Object.assign(S,{time:d.time||S.time,wknd:d.wknd??S.wknd,fromSt:d.fromSt,fromLine:d.fromLine,toSt:d.toSt,toLine:d.toLine,page:d.page||'home'});}}
+  }catch(e){console.error(e);}
+}
+function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify({patterns:S.patterns,cfg:S.cfg,calib:S.calib,travelLog:S.travelLog}));return true;}catch(e){flash('⚠️ บันทึกไม่ได้','err');return false;}}
+function saveSess(){try{localStorage.setItem(SESS_KEY,JSON.stringify({time:S.time,wknd:S.wknd,fromSt:S.fromSt,fromLine:S.fromLine,toSt:S.toSt,toLine:S.toLine,page:S.page,at:Date.now()}));}catch{}}
+function flash(m,t){const e=document.createElement('div');e.className='flash '+(t==='err'?'flash-err':'flash-ok');e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),2000);}
+
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveSess();});
+window.addEventListener('pagehide',saveSess);
+load();
+
+function getSched(key){const dt=S.wknd?'weekend':'weekday';const k=`${key}_${dt}`;return calibrate(SCHEDULES[key]?.[dt]||[],(S.calib[k]||{}).anchors,(S.calib[k]||{}).deleted);}
+
+function statusOf(w){
+  if(w<=1)return{text:'วิ่งเลย!!',emoji:'🏃‍♂️💨',color:'#EF4444',bg:'rgba(239,68,68,.10)',bd:'rgba(239,68,68,.22)'};
+  if(w<=3)return{text:'เดินเร็ว!',emoji:'🚶‍♂️💨',color:'#F59E0B',bg:'rgba(245,158,11,.10)',bd:'rgba(245,158,11,.22)'};
+  if(w<=8)return{text:'เดินสบาย',emoji:'🚶',color:'#22C55E',bg:'rgba(34,197,94,.08)',bd:'rgba(34,197,94,.18)'};
+  return{text:'รอชิลๆ',emoji:'☕',color:'#818CF8',bg:'rgba(129,140,248,.08)',bd:'rgba(129,140,248,.18)'};
+}
+
+// ================================================================
+// CALCULATE JOURNEY
+// ================================================================
+function calcJourney(){
+  if(!S.route||!S.route.length)return null;
+  const legs=[];let cur=S.time;const dt=S.wknd?'weekend':'weekday';
+  for(let i=0;i<S.route.length;i++){
+    const step=S.route[i];
+    if(step.type==='train'){
+      const sk=getSchedKey(step.line,step.dir);
+      const trains=getSched(sk);
+      const tr=findNext(trains,cur);
+      if(!tr)return{err:`ไม่มีรถ${LINES[step.line].name}แล้ว`};
+      const wait=toM(tr)-toM(cur);
+      const tKey=`${step.line}_${step.dir}`;
+      const log=S.travelLog[tKey];
+      const travel=log?.length?Math.round(log.slice(-5).reduce((s,e)=>s+e.mins,0)/log.slice(-5).length):step.stations*(S.cfg.stationTime||2);
+      const arrive=fM(toM(tr)+travel);
+      legs.push({t:'train',line:step.line,lc:LINES[step.line].color,lineName:LINES[step.line].name,
+        from:step.from,to:step.to,stations:step.stations,
+        atStation:i===0?S.time:undefined,trainTime:tr,wait:i===0?wait:undefined,
+        arrive,travel,schedKey:sk,travelKey:tKey,
+        logCount:log?.length||0,isAvg:log?.length>0});
+      cur=arrive;
+    } else if(step.type==='xfer'){
+      const arrSt=cur;const ready=fM(toM(cur)+step.walk);
+      // Find schedule for next train leg
+      const nextStep=S.route[i+1];
+      if(!nextStep)break;
+      const nsk=getSchedKey(nextStep.line,nextStep.dir);
+      const nTrains=getSched(nsk);
+      const nxt=findNext(nTrains,ready);
+      if(!nxt)return{err:'ไม่มีรถสายต่อไป'};
+      const w=toM(nxt)-toM(ready);
+      legs.push({t:'xfer',stationA:step.stationA,stationB:step.stationB,arriveStation:arrSt,walk:step.walk,ready,nextTrain:nxt,wait:w,status:statusOf(w),nextSched:nsk});
+      cur=ready;
+    }
+  }
+  if(!legs.length)return null;
+  const lastLeg=legs.filter(l=>l.t==='train').pop();
+  return{legs,total:toM(lastLeg.arrive)-toM(S.time),dep:S.time,arr:lastLeg.arrive};
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+function render(){
+  const app=document.getElementById('app');
+  if(S.page==='home')renderHome(app);
+  else if(S.page==='select')renderSelect(app);
+  else if(S.page==='calc')renderCalc(app);
+}
+
+function renderHome(el){
+  const now=new Date();const ck=fM(now.getHours()*60+now.getMinutes());
+  let h=`<div style="text-align:center;padding:20px 0 16px">
+    <div style="font-size:10px;letter-spacing:5px;color:#475569">BANGKOK TRANSIT</div>
+    <h1 style="font-size:24px;font-weight:800;margin:2px 0;background:linear-gradient(135deg,#C4B5FD,#93C5FD,#86EFAC);-webkit-background-clip:text;-webkit-text-fill-color:transparent">🚇 เดิน หรือ วิ่ง?</h1>
+    <div id="ck" class="mono" style="margin-top:4px;font-size:24px;color:#94A3B8;letter-spacing:3px">${ck}</div>
+  </div>`;
+
+  // Saved patterns
+  h+=`<div style="font-size:12px;color:#94A3B8;margin-bottom:8px;font-weight:600">⭐ เส้นทางที่บันทึก</div>`;
+  S.patterns.forEach((p,i)=>{
+    if(p){
+      h+=`<button class="btn st-btn" onclick="usePattern(${i})" style="border-left:3px solid ${LINES[p.fromLine].color}">
+        <div><div style="font-size:14px;font-weight:700;color:#F1F5F9">${p.name||('เส้นทาง '+(i+1))}</div>
+        <div style="font-size:11px;color:#94A3B8">${p.fromSt} → ${p.toSt}</div></div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="btn" onclick="event.stopPropagation();deletePattern(${i})" style="padding:4px 8px;border-radius:6px;background:rgba(239,68,68,.08);color:#FCA5A5;font-size:10px">✕</button>
+          <span style="font-size:18px">→</span>
+        </div>
+      </button>`;
+    } else {
+      h+=`<button class="btn st-btn" onclick="startNewRoute()" style="border-left:3px solid rgba(100,116,139,.2);color:#475569">
+        <span>＋ บันทึกเส้นทาง ${i+1}</span>
+      </button>`;
+    }
+  });
+
+  // New route button
+  h+=`<div style="margin-top:16px">
+    <button class="btn" onclick="startNewRoute()" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(37,99,235,.12));border:1px solid rgba(99,102,241,.15);color:#A5B4FC;font-size:14px;font-weight:700">
+      🗺️ เลือกเส้นทางใหม่
+    </button>
+  </div>`;
+
+  // Day type
+  h+=`<div style="display:flex;gap:6px;margin-top:16px">
+    ${[false,true].map(w=>`<button class="btn" onclick="S.wknd=${w};saveSess();render()" style="flex:1;padding:8px;border-radius:9px;background:${S.wknd===w?'rgba(99,102,241,.12)':'rgba(18,22,36,.4)'};color:${S.wknd===w?'#A5B4FC':'#475569'};border:${S.wknd===w?'1px solid rgba(99,102,241,.18)':'1px solid transparent'};font-size:12px;font-weight:${S.wknd===w?600:400}">${w?'🗓 เสาร์-อาทิตย์':'📅 จันทร์-ศุกร์'}</button>`).join('')}
+  </div>`;
+
+  el.innerHTML=h;
+}
+
+function renderSelect(el){
+  const target=S.selectTarget;
+  const title=target==='from'?'เลือกสถานีต้นทาง':'เลือกสถานีปลายทาง';
+  const lineKeys=Object.keys(LINES);
+  const filter=S.filterLine;
+
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <button class="btn" onclick="S.page='home';render()" style="padding:8px 12px;border-radius:8px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:13px">← กลับ</button>
+    <div style="font-size:16px;font-weight:700">${title}</div>
+  </div>`;
+
+  // Show selected from if choosing to
+  if(target==='to'&&S.fromSt){
+    h+=`<div style="padding:8px 12px;border-radius:8px;background:rgba(99,102,241,.06);margin-bottom:10px;font-size:12px;color:#94A3B8">
+      จาก: <strong style="color:#F1F5F9">${S.fromSt}</strong> (${LINES[S.fromLine].name})
+    </div>`;
+  }
+
+  // Search
+  h+=`<input class="search-input" placeholder="🔍 ค้นหาสถานี..." value="${S.searchQ}" oninput="S.searchQ=this.value;render()">`;
+
+  // Line filter tabs
+  h+=`<div style="display:flex;gap:4px;margin-bottom:12px;overflow-x:auto;padding-bottom:4px">
+    <button class="btn line-tab" onclick="S.filterLine=null;render()" style="background:${!filter?'rgba(99,102,241,.15)':'rgba(18,22,36,.4)'};color:${!filter?'#A5B4FC':'#475569'};border:${!filter?'1px solid rgba(99,102,241,.2)':'1px solid transparent'}">ทั้งหมด</button>
+    ${lineKeys.map(k=>`<button class="btn line-tab" onclick="S.filterLine='${k}';render()" style="background:${filter===k?LINES[k].color+'20':'rgba(18,22,36,.4)'};color:${filter===k?LINES[k].color:'#475569'};border:${filter===k?'1px solid '+LINES[k].color+'30':'1px solid transparent'}">${LINES[k].name.replace('สาย','')}</button>`).join('')}
+  </div>`;
+
+  // Station list
+  const q=S.searchQ.toLowerCase();
+  const filteredLines=filter?[filter]:lineKeys;
+  for(const lk of filteredLines){
+    const L=LINES[lk];
+    const sts=L.stations.filter(s=>!q||s.toLowerCase().includes(q));
+    if(!sts.length)continue;
+    h+=`<div style="font-size:11px;font-weight:700;color:${L.color};margin:10px 0 6px;display:flex;align-items:center;gap:5px">
+      <div style="width:8px;height:8px;border-radius:50%;background:${L.color}"></div>${L.name} (${sts.length})
+    </div>`;
+    for(const st of sts){
+      const xfers=XFERS.filter(x=>(x.a===st&&x.la===lk)||(x.b===st&&x.lb===lk));
+      const xferBadge=xfers.length?xfers.map(x=>{const other=x.a===st&&x.la===lk?LINES[x.lb]:LINES[x.la];return`<span class="xfer">↔${other.name.replace('สาย','')}</span>`;}).join(''):'';
+      const isSel=(target==='to'&&S.fromSt===st&&S.fromLine===lk);
+      h+=`<button class="btn st-btn" onclick="selectStation('${st}','${lk}')" style="border-left:3px solid ${L.color};${isSel?'opacity:.4':''}">
+        <span>${st}${xferBadge}</span>
+        <span style="font-size:10px;color:#475569">${L.stations.indexOf(st)+1}/${L.stations.length}</span>
+      </button>`;
+    }
+  }
+
+  el.innerHTML=h;
+}
+
+function renderCalc(el){
+  const R=calcJourney();
+  const now=new Date();const ck=fM(now.getHours()*60+now.getMinutes());
+
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <button class="btn" onclick="S.page='home';render()" style="padding:8px 12px;border-radius:8px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:13px">← กลับ</button>
+    <div style="flex:1"><div style="font-size:14px;font-weight:700">${S.fromSt} → ${S.toSt}</div></div>
+    <div id="ck" class="mono" style="font-size:14px;color:#94A3B8">${ck}</div>
+  </div>`;
+
+  // Save as pattern
+  const canSave=S.patterns.some(p=>!p);
+  if(canSave){
+    h+=`<button class="btn" onclick="saveAsPattern()" style="width:100%;padding:8px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.15);color:#FCD34D;font-size:11px;margin-bottom:10px">⭐ บันทึกเส้นทางนี้</button>`;
+  }
+
+  // Day type
+  h+=`<div style="display:flex;gap:6px;margin-bottom:10px">
+    ${[false,true].map(w=>`<button class="btn" onclick="S.wknd=${w};saveSess();render()" style="flex:1;padding:7px;border-radius:8px;background:${S.wknd===w?'rgba(99,102,241,.12)':'rgba(18,22,36,.4)'};color:${S.wknd===w?'#A5B4FC':'#475569'};font-size:11px;font-weight:${S.wknd===w?600:400};border:${S.wknd===w?'1px solid rgba(99,102,241,.18)':'1px solid transparent'}">${w?'🗓 วันหยุด':'📅 วันธรรมดา'}</button>`).join('')}
+  </div>`;
+
+  // Time input
+  const qT=['05:30','06:00','06:30','07:00','07:30','08:00','17:00','18:00','19:00','20:00'];
+  h+=`<div class="card" style="padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:10px;color:#64748B;letter-spacing:2px;margin-bottom:4px">⏰ เวลาถึง ${S.fromSt}</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="time" value="${S.time}" onchange="S.time=this.value;saveSess();render()" style="flex:1;font-size:28px;font-weight:300;padding:4px 10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);border-radius:9px;color:#F1F5F9;outline:none" class="mono">
+      <button class="btn" onclick="S.time=fM(new Date().getHours()*60+new Date().getMinutes());saveSess();render()" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(100,116,139,.1);background:rgba(99,102,241,.08);color:#A5B4FC;font-size:11px;font-weight:600">ตอนนี้</button>
+    </div>
+    <div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap">
+      ${qT.map(t=>`<button class="btn" onclick="S.time='${t}';saveSess();render()" style="padding:3px 8px;border-radius:5px;background:${S.time===t?'rgba(139,92,246,.18)':'rgba(18,22,36,.4)'};color:${S.time===t?'#C4B5FD':'#475569'};font-size:10px">${t}</button>`).join('')}
+    </div>
+  </div>`;
+
+  if(!R){h+=`<div class="card" style="padding:18px;text-align:center;color:#94A3B8">ไม่สามารถคำนวณเส้นทางได้</div>`;el.innerHTML=h;return;}
+  if(R.err){h+=`<div class="card" style="padding:18px;text-align:center;color:#FCA5A5;background:rgba(239,68,68,.08)">⚠️ ${R.err}</div>`;el.innerHTML=h;return;}
+
+  const tl=R.legs.filter(l=>l.t==='train');
+  // Summary
+  h+=`<div class="card" style="padding:14px 16px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div><div style="font-size:9px;color:#475569;letter-spacing:2px">รวม</div><div style="font-size:32px;font-weight:800;color:#F1F5F9;line-height:1">${R.total}<span style="font-size:14px;font-weight:400;color:#475569"> นาที</span></div></div>
+      <div style="text-align:right"><div style="font-size:10px;color:#475569">ออก ${R.dep}</div><div style="font-size:15px;font-weight:700;color:#4ADE80">ถึง ${R.arr}</div></div>
+    </div>
+    <div style="display:flex;height:3px;border-radius:2px;overflow:hidden;margin-top:10px;gap:2px">${tl.map(l=>`<div style="flex:${l.travel};background:${l.lc};opacity:.7"></div>`).join('')}</div>
+  </div>`;
+
+  // Legs
+  R.legs.forEach((leg,i)=>{
+    if(leg.t==='xfer'){
+      const s=leg.status;
+      h+=`<div style="padding:0 0 0 18px;position:relative">
+        <div style="position:absolute;left:3px;top:0;bottom:0;border-left:2px dashed rgba(100,116,139,.12)"></div>
+        <div style="position:absolute;left:-3px;top:10px;width:12px;height:12px;border-radius:50%;background:#0B0E18;border:2px solid #F59E0B;z-index:2"></div>
+        <div style="background:${s.bg};border-radius:10px;padding:10px 12px;margin:3px 0;border:1px solid ${s.bd}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:11px;font-weight:700">🔄 ${leg.stationA}${leg.stationA!==leg.stationB?' → '+leg.stationB:''}</span><span style="font-size:16px">${s.emoji}</span></div>
+          <div style="display:flex;align-items:center;margin-bottom:6px;background:rgba(0,0,0,.15);border-radius:7px;padding:6px 8px">
+            <div style="flex:1;text-align:center"><div class="tiny">ลงสถานี</div><div class="mono" style="font-size:12px;font-weight:600;color:#CBD5E1">${leg.arriveStation}</div></div>
+            <div style="color:#334155;font-size:9px">→</div>
+            <div style="flex:1;text-align:center"><div class="tiny">เดิน ${leg.walk}m</div><div class="mono" style="font-size:12px;font-weight:600;color:#CBD5E1">${leg.ready}</div></div>
+            <div style="color:#334155;font-size:9px">→</div>
+            <div style="flex:1;text-align:center"><div class="tiny">รถออก</div><div class="mono editable" onclick="editDepart('${leg.nextSched}','${leg.nextTrain}')" style="font-size:13px;font-weight:700;color:#F1F5F9">${leg.nextTrain}</div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:700;color:${s.color}">${s.text}</span><span style="font-size:10px;color:#94A3B8">รอ <strong style="color:${s.color}">${leg.wait}</strong>m</span></div>
+        </div>
+      </div>`;
+    } else {
+      const avgLbl=leg.isAvg?`<span style="font-size:8px;color:#60A5FA">(avg ${leg.logCount}x)</span>`:'';
+      h+=`<div style="display:flex">
+        <div style="width:9px;display:flex;flex-direction:column;align-items:center">
+          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 4px ${leg.lc}35;flex-shrink:0"></div>
+          <div style="flex:1;width:2px;background:${leg.lc};opacity:.35"></div>
+          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 4px ${leg.lc}35;flex-shrink:0"></div>
+        </div>
+        <div style="flex:1;padding-left:9px">
+          <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;background:${leg.lc}12;margin-bottom:4px">
+            <div style="width:5px;height:5px;border-radius:50%;background:${leg.lc}"></div>
+            <span style="font-size:9px;font-weight:700;color:${leg.lc}">${leg.lineName} (${leg.stations} สถานี)</span>
+          </div>
+          <div class="card" style="padding:10px 12px;margin-bottom:2px">
+            ${leg.atStation!==undefined?`<div style="font-size:10px;color:#94A3B8;margin-bottom:6px;padding:4px 8px;border-radius:6px;background:rgba(99,102,241,.05)">ถึง <strong style="color:#E2E8F0">${leg.atStation}</strong>${leg.wait>0?` → รอ <strong style="color:#C4B5FD">${leg.wait}m</strong>`:''}</div>`:''}
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <div><div class="tiny">ขึ้น</div><div style="font-size:12px;font-weight:700">${leg.from}</div></div>
+              <div style="text-align:right"><div class="tiny">ออก <span style="font-size:7px;color:#FACC15">แก้ไข</span></div><div class="mono editable" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:15px;font-weight:700">${leg.trainTime}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;margin:2px 0"><div style="flex:1;height:1px;background:${leg.lc}20"></div><span style="font-size:8px;color:#475569">🕐 ${leg.travel}m ${avgLbl}</span><div style="flex:1;height:1px;background:${leg.lc}20"></div></div>
+            <div style="display:flex;justify-content:space-between;margin-top:5px">
+              <div><div class="tiny">ลง</div><div style="font-size:12px;font-weight:700">${leg.to}</div></div>
+              <div style="text-align:right"><div class="tiny">ถึง <span style="font-size:7px;color:#60A5FA">แก้ไข</span></div><div class="mono editable ed-arrive" onclick="editArrive('${leg.travelKey}','${leg.trainTime}','${leg.arrive}','${leg.from}','${leg.to}')" style="font-size:15px;font-weight:700;color:#4ADE80">${leg.arrive}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+  });
+
+  el.innerHTML=h;
+}
+
+// ================================================================
+// ACTIONS
+// ================================================================
+window.startNewRoute=()=>{S.selectTarget='from';S.searchQ='';S.filterLine=null;S.page='select';render();};
+window.selectStation=(st,line)=>{
+  if(S.selectTarget==='from'){S.fromSt=st;S.fromLine=line;S.selectTarget='to';S.searchQ='';render();}
+  else{S.toSt=st;S.toLine=line;S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);S.page='calc';saveSess();render();}
+};
+window.usePattern=(i)=>{
+  const p=S.patterns[i];if(!p)return;
+  S.fromSt=p.fromSt;S.fromLine=p.fromLine;S.toSt=p.toSt;S.toLine=p.toLine;
+  S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);S.page='calc';saveSess();render();
+};
+window.saveAsPattern=()=>{
+  const idx=S.patterns.findIndex(p=>!p);if(idx<0)return flash('เต็มแล้ว (3 เส้นทาง)','err');
+  const name=prompt('ตั้งชื่อเส้นทาง',`${S.fromSt}→${S.toSt}`);if(!name)return;
+  S.patterns[idx]={name,fromSt:S.fromSt,fromLine:S.fromLine,toSt:S.toSt,toLine:S.toLine};
+  save();flash('⭐ บันทึกแล้ว');render();
+};
+window.deletePattern=(i)=>{S.patterns[i]=null;save();render();};
+
+// Edit popups (same as before)
+window.editDepart=(sched,currentTime)=>{
+  document.querySelector('.overlay')?.remove();
+  const dt=S.wknd?'weekend':'weekday';const k=`${sched}_${dt}`;
+  const base=SCHEDULES[sched]?.[dt]||[];const cd=S.calib[k]||{anchors:[],deleted:[]};
+  let closest=base[0],minD=9999;for(const b of base){if(!cd.deleted?.includes(b)){const d=Math.abs(toM(b)-toM(currentTime));if(d<minD){minD=d;closest=b;}}}
+  const ov=document.createElement('div');ov.className='overlay';ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.innerHTML=`<div class="panel">
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px"><div style="font-size:15px;font-weight:700">📌 แก้เวลารถออก</div><button class="btn" onclick="this.closest('.overlay').remove()" style="padding:5px 10px;border-radius:7px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:12px">✕</button></div>
+    <div style="text-align:center;margin-bottom:14px"><div style="font-size:10px;color:#94A3B8">ตาราง</div><div class="mono" style="font-size:26px;font-weight:700">${currentTime}</div></div>
+    <div style="margin-bottom:14px"><div style="font-size:11px;color:#4ADE80;margin-bottom:4px;font-weight:600">เวลาจริง:</div><input type="time" id="ed_val" value="${currentTime}" style="width:100%;font-size:26px;padding:6px 14px;background:rgba(11,14,24,.5);border:2px solid rgba(34,197,94,.3);border-radius:10px;color:#4ADE80;outline:none;font-family:monospace;text-align:center"></div>
+    <div style="display:flex;gap:6px"><button class="btn" onclick="doSaveD('${sched}','${closest}')" style="flex:1;padding:10px;border-radius:9px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:#4ADE80;font-size:13px;font-weight:700">📌 บันทึก</button><button class="btn" onclick="doDelD('${sched}','${closest}')" style="padding:10px 14px;border-radius:9px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#FCA5A5;font-size:13px;font-weight:700">🗑️</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+};
+
+window.doSaveD=(sched,orig)=>{const v=document.getElementById('ed_val')?.value;if(!v)return;const dt=S.wknd?'weekend':'weekday';const k=`${sched}_${dt}`;if(!S.calib[k])S.calib[k]={anchors:[],deleted:[]};S.calib[k].anchors=[...S.calib[k].anchors.filter(a=>a.orig!==orig),{orig,real:v}];save();document.querySelector('.overlay')?.remove();flash('📌 บันทึกแล้ว');render();};
+window.doDelD=(sched,orig)=>{const dt=S.wknd?'weekend':'weekday';const k=`${sched}_${dt}`;if(!S.calib[k])S.calib[k]={anchors:[],deleted:[]};S.calib[k].deleted=[...new Set([...(S.calib[k].deleted||[]),orig])];save();document.querySelector('.overlay')?.remove();flash('🗑️ ลบแล้ว');render();};
+
+window.editArrive=(tk,dep,arr,fr,to)=>{
+  document.querySelector('.overlay')?.remove();
+  const log=S.travelLog[tk]||[];const defT=S.cfg.stationTime||2;
+  const ov=document.createElement('div');ov.className='overlay';ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.innerHTML=`<div class="panel">
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px"><div style="font-size:15px;font-weight:700">🕐 แก้เวลาถึง</div><button class="btn" onclick="this.closest('.overlay').remove()" style="padding:5px 10px;border-radius:7px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:12px">✕</button></div>
+    <div style="font-size:11px;color:#94A3B8;margin-bottom:8px">${fr} → ${to} ${log.length?`• เฉลี่ย <strong style="color:#60A5FA">${Math.round(log.slice(-5).reduce((s,e)=>s+e.mins,0)/log.slice(-5).length)}m</strong> (${log.length}x)`:''}</div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:10px"><div><div class="tiny">ออก</div><div class="mono" style="font-size:18px;font-weight:700">${dep}</div></div><div style="text-align:right"><div class="tiny">ถึง (ตอนนี้)</div><div class="mono" style="font-size:18px;font-weight:700;color:#4ADE80">${arr}</div></div></div>
+    <div style="margin-bottom:14px"><div style="font-size:11px;color:#60A5FA;margin-bottom:4px;font-weight:600">เวลาถึงจริง:</div><input type="time" id="ed_val" value="${arr}" style="width:100%;font-size:26px;padding:6px 14px;background:rgba(11,14,24,.5);border:2px solid rgba(96,165,250,.3);border-radius:10px;color:#60A5FA;outline:none;font-family:monospace;text-align:center"></div>
+    <button class="btn" onclick="doSaveA('${tk}','${dep}')" style="width:100%;padding:10px;border-radius:9px;background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.3);color:#60A5FA;font-size:13px;font-weight:700">🕐 บันทึก</button>
+    ${log.length?`<div style="margin-top:10px"><div style="font-size:9px;color:#475569;margin-bottom:3px">ประวัติ:</div><div style="display:flex;flex-wrap:wrap;gap:2px">${log.slice(-8).reverse().map(e=>`<span class="chip">${e.mins}m ${e.date||''}</span>`).join('')}</div><button class="btn" onclick="delete S.travelLog['${tk}'];save();document.querySelector('.overlay')?.remove();flash('ลบแล้ว');render()" style="margin-top:4px;padding:3px 8px;border-radius:4px;background:rgba(239,68,68,.06);color:#FCA5A5;font-size:9px">ลบประวัติ</button></div>`:''}
+  </div>`;
+  document.body.appendChild(ov);
+};
+
+window.doSaveA=(tk,dep)=>{const v=document.getElementById('ed_val')?.value;if(!v)return;const mins=((toM(v)-toM(dep))%1440+1440)%1440;if(mins<=0||mins>120){flash('เวลาไม่ถูกต้อง','err');return;}const today=new Date().toLocaleDateString('th-TH',{day:'numeric',month:'short'});if(!S.travelLog[tk])S.travelLog[tk]=[];S.travelLog[tk].push({depart:dep,arrive:v,mins,date:today});if(S.travelLog[tk].length>20)S.travelLog[tk]=S.travelLog[tk].slice(-20);save();document.querySelector('.overlay')?.remove();flash(`🕐 ${mins}m บันทึกแล้ว`);render();};
+
+// Clock
+setInterval(()=>{const e=document.getElementById('ck');if(e){const n=new Date();e.textContent=fM(n.getHours()*60+n.getMinutes())+':'+String(n.getSeconds()).padStart(2,'0');}},1000);
+setInterval(render,30000);
+render();
+</script>
+</body>
+</html>
