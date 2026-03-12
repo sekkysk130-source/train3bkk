@@ -380,31 +380,40 @@ function statusOf(w){
 // ================================================================
 // CALCULATE JOURNEY — with upcoming trains
 // ================================================================
+
+// Route fingerprint: ใช้แยก travelLog ของแต่ละเส้นทาง
+function routeKey(fromSt,fromLine,toSt,toLine){
+  return`${fromLine}:${fromSt}|${toLine}:${toSt}`;
+}
+
 function calcJourney(){
   if(!S.route||!S.route.length)return null;
   const legs=[];let cur=S.time;
+  const rKey=routeKey(S.fromSt,S.fromLine,S.toSt,S.toLine);
+  const nowM=toM(fM(new Date().getHours()*60+new Date().getMinutes()));
+
   for(let i=0;i<S.route.length;i++){
     const step=S.route[i];
     if(step.type==='train'){
       const sk=getSchedKey(step.line,step.dir);
       const trains=getSched(sk);
-      // หารถ 3 ขบวนถัดไป (ขบวนแรก + 2 ถัดไป)
       const nextTrains=findNextN(trains,cur,3);
       if(!nextTrains.length)return{err:`ไม่มีรถ${LINES[step.line].name}แล้ว`};
       const tr=nextTrains[0];
-      const upcoming=nextTrains.slice(1); // [next2, next3]
+      const upcoming=nextTrains.slice(1);
       const wait=toM(tr)-toM(cur);
-      const tKey=`${step.line}_${step.dir}`;
+      // travelKey รวม route fingerprint เพื่อแยกแต่ละเส้นทาง
+      const tKey=`${rKey}__${step.line}_${step.dir}`;
       const log=S.travelLog[tKey];
       const travel=log?.length?Math.round(log.slice(-5).reduce((s,e)=>s+e.mins,0)/log.slice(-5).length):step.stations*(S.cfg.stationTime||2);
       const arrive=fM(toM(tr)+travel);
       legs.push({t:'train',line:step.line,lc:LINES[step.line].color,lineName:LINES[step.line].name,
         from:step.from,to:step.to,stations:step.stations,
-        atStation:i===0?S.time:undefined,trainTime:tr,wait:i===0?wait:undefined,
+        atStation:i===0?S.time:undefined,
+        trainTime:tr,wait,
         arrive,travel,schedKey:sk,travelKey:tKey,
         logCount:log?.length||0,isAvg:log?.length>0,
-        upcoming, // 2 ขบวนถัดไป
-        curTime:cur, // เวลา ณ ตอนนั้น
+        upcoming,curTime:cur,
       });
       cur=arrive;
     } else if(step.type==='xfer'){
@@ -422,6 +431,37 @@ function calcJourney(){
   }
   if(!legs.length)return null;
   const lastLeg=legs.filter(l=>l.t==='train').pop();
+
+  // ── กำหนด activeLegIdx: leg ที่ "กำลัง active" ──
+  // Logic: ดู train legs ตามลำดับ
+  // - ถ้า nowM ยังไม่ถึงเวลา arrive ของ leg นั้น → นั่นคือ leg ที่กำลัง active
+  // - ยกเว้น: ถ้า leg ถัดไป มี trainTime ≤ nowM+5 → ให้ leg ถัดไป active แทน (เตือน 5 นาทีก่อนต้องต่อ)
+  const trainLegs=legs.filter(l=>l.t==='train');
+  let activeIdx=0; // index ใน trainLegs[]
+  for(let i=0;i<trainLegs.length;i++){
+    const leg=trainLegs[i];
+    const arrM=toM(leg.arrive);
+    if(nowM<=arrM){
+      // อยู่ใน leg นี้
+      // แต่ถ้า leg ถัดไปมีอยู่ และ trainTime ของ leg ถัดไป ≤ nowM+5 → active = leg ถัดไป
+      if(i+1<trainLegs.length){
+        const nextTrM=toM(trainLegs[i+1].trainTime);
+        if(nextTrM-nowM<=5){activeIdx=i+1;break;}
+      }
+      activeIdx=i;break;
+    }
+    // nowM เลย arrive ไปแล้ว → ไป leg ถัดไป
+    activeIdx=i+1;
+  }
+  // clamp
+  if(activeIdx>=trainLegs.length)activeIdx=trainLegs.length-1;
+
+  // ใส่ flag isActive ลงใน legs
+  let tIdx=0;
+  legs.forEach(leg=>{
+    if(leg.t==='train'){leg.isActive=(tIdx===activeIdx);tIdx++;}
+  });
+
   return{legs,total:toM(lastLeg.arrive)-toM(S.time),dep:S.time,arr:lastLeg.arrive};
 }
 
@@ -584,10 +624,6 @@ function renderCalc(el){
     <div style="display:flex;height:3px;border-radius:2px;overflow:hidden;margin-top:10px;gap:2px">${tl.map(l=>`<div style="flex:${l.travel};background:${l.lc};opacity:.7"></div>`).join('')}</div>
   </div>`;
 
-  // ── Track current active leg index (สำหรับ highlight) ──
-  // ขบวนแรกของ train legs = active (ขบวนที่กำลังจะขึ้น)
-  let trainLegIdx=0;
-
   R.legs.forEach((leg,i)=>{
     if(leg.t==='xfer'){
       const s=leg.status;
@@ -608,47 +644,60 @@ function renderCalc(el){
       </div>`;
     } else {
       // ── Train leg ──
-      const isFirstLeg = (leg.atStation !== undefined); // leg แรก = มีเวลาถึงสถานี
+      // isActive: คำนวณใน calcJourney แล้ว (ดูเวลา real-time + 5 นาทีล่วงหน้า)
+      const isActive = leg.isActive;
       const avgLbl=leg.isAvg?`<span style="font-size:8px;color:#60A5FA">(avg ${leg.logCount}x)</span>`:'';
 
-      // เวลารถออก — ถ้าเป็น leg แรก ไฮไลต์ใหญ่
-      const trainTimeBlock = isFirstLeg
+      // เวลารถออก — ถ้า active: ไฮไลต์ใหญ่ + สีเหลืองสว่าง
+      const trainTimeBlock = isActive
         ? `<div>
             <div class="tiny" style="margin-bottom:2px">รถออก <span style="font-size:7px;color:#FACC15">แก้ไข</span></div>
-            <div class="mono editable train-time-primary active" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:32px">
+            <div class="mono editable train-time-primary active" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')">
               ${leg.trainTime}
             </div>
-            ${leg.wait!==undefined && leg.wait>0
+            ${leg.wait>0
               ? `<div style="font-size:10px;color:#94A3B8;margin-top:1px">รอ <strong style="color:#FACC15">${leg.wait}</strong> นาที</div>`
-              : `<div style="font-size:10px;color:#4ADE80">🚇 ถึงแล้ว!</div>`
+              : `<div style="font-size:10px;color:#4ADE80">🚇 ขึ้นได้เลย!</div>`
             }
           </div>`
-        : `<div style="text-align:right"><div class="tiny">รถออก <span style="font-size:7px;color:#FACC15">แก้ไข</span></div><div class="mono editable" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:15px;font-weight:700">${leg.trainTime}</div></div>`;
+        : `<div style="text-align:right;opacity:${leg.isActive===false?'0.55':'1'}">
+            <div class="tiny">รถออก <span style="font-size:7px;color:#FACC15">แก้ไข</span></div>
+            <div class="mono editable" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:15px;font-weight:700;color:#CBD5E1">${leg.trainTime}</div>
+           </div>`;
+
+      // card border: active = สีสายนั้น กระพริบ
+      const cardStyle = isActive
+        ? `padding:12px 14px;margin-bottom:2px;border:1px solid ${leg.lc}50;box-shadow:0 0 12px ${leg.lc}18;`
+        : `padding:12px 14px;margin-bottom:2px;opacity:0.7;`;
 
       h+=`<div style="display:flex">
         <div style="width:9px;display:flex;flex-direction:column;align-items:center">
-          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 4px ${leg.lc}35;flex-shrink:0"></div>
-          <div style="flex:1;width:2px;background:${leg.lc};opacity:.35"></div>
-          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 4px ${leg.lc}35;flex-shrink:0"></div>
+          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 ${isActive?8:4}px ${leg.lc}${isActive?'80':'35'};flex-shrink:0"></div>
+          <div style="flex:1;width:2px;background:${leg.lc};opacity:${isActive?.5:.2}"></div>
+          <div style="width:9px;height:9px;border-radius:50%;background:${leg.lc};box-shadow:0 0 ${isActive?8:4}px ${leg.lc}${isActive?'80':'35'};flex-shrink:0"></div>
         </div>
         <div style="flex:1;padding-left:9px">
-          <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;background:${leg.lc}12;margin-bottom:4px">
+          <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;background:${leg.lc}${isActive?'22':'10'};margin-bottom:4px">
             <div style="width:5px;height:5px;border-radius:50%;background:${leg.lc}"></div>
-            <span style="font-size:9px;font-weight:700;color:${leg.lc}">${leg.lineName} (${leg.stations} สถานี)</span>
+            <span style="font-size:9px;font-weight:700;color:${leg.lc}">${leg.lineName} (${leg.stations} สถานี)${isActive?' 🔴':''}</span>
           </div>
-          <div class="card" style="padding:12px 14px;margin-bottom:2px">
-            ${isFirstLeg ? `
-            <!-- เวลาต้นทาง + รถออก แบบ BIG -->
+          <div class="card" style="${cardStyle}">
+            ${isActive ? `
+            <!-- ACTIVE LEG: ไฮไลต์ใหญ่ -->
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
               <div>
-                <div class="tiny" style="margin-bottom:2px">ถึง ${leg.atStation}</div>
-                <div class="mono" style="font-size:13px;color:#94A3B8;font-weight:500">${leg.atStation}</div>
-                ${leg.wait!==undefined && leg.wait>0?`<div style="font-size:10px;color:#475569">รถมาใน <strong style="color:#FACC15">${leg.wait}</strong> นาที</div>`:''}
+                ${leg.atStation!==undefined
+                  ?`<div class="tiny" style="margin-bottom:2px">ถึง ${leg.atStation}</div>
+                    <div class="mono" style="font-size:13px;color:#94A3B8;font-weight:500">${leg.atStation}</div>`
+                  :`<div class="tiny" style="margin-bottom:2px">เตรียมต่อสาย</div>
+                    <div style="font-size:12px;color:#F59E0B;font-weight:600">⚡ ต่อสายเร็วๆ นี้</div>`
+                }
+                ${leg.wait>0?`<div style="font-size:10px;color:#475569">รถมาใน <strong style="color:#FACC15">${leg.wait}</strong> นาที</div>`:''}
               </div>
               ${trainTimeBlock}
             </div>
             <!-- Upcoming trains strip -->
-            ${renderUpcoming(leg, leg.atStation)}
+            ${renderUpcoming(leg, leg.curTime)}
             <div style="height:1px;background:rgba(100,116,139,.08);margin:8px 0"></div>
             ` : `
             <div style="display:flex;justify-content:space-between;margin-bottom:5px">
@@ -669,7 +718,6 @@ function renderCalc(el){
           </div>
         </div>
       </div>`;
-      trainLegIdx++;
     }
   });
 
