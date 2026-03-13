@@ -353,7 +353,11 @@ function load(){
     const r=localStorage.getItem(STORE_KEY);
     if(r){const d=JSON.parse(r);S.patterns=d.patterns||S.patterns;S.cfg=d.cfg||S.cfg;S.calib=d.calib||{};S.travelLog=d.travelLog||{};}
     const ss=localStorage.getItem(SESS_KEY);
-    if(ss){const d=JSON.parse(ss);if(d.at&&Date.now()-d.at<3*3600000){Object.assign(S,{time:d.time||S.time,wknd:d.wknd??S.wknd,fromSt:d.fromSt,fromLine:d.fromLine,toSt:d.toSt,toLine:d.toLine,page:d.page||'home'});}}
+    if(ss){const d=JSON.parse(ss);if(d.at&&Date.now()-d.at<3*3600000){Object.assign(S,{time:d.time||S.time,wknd:d.wknd??S.wknd,fromSt:d.fromSt,fromLine:d.fromLine,toSt:d.toSt,toLine:d.toLine,page:d.page||'home'});
+    // rebuild route หลัง restore (route ไม่ได้ save ใน session)
+    if(S.fromSt&&S.toSt&&S.fromLine&&S.toLine){S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);}
+    // ถ้า route หา ไม่เจอ ให้กลับ home แทนการแสดง error
+    if(S.page==='calc'&&!S.route){S.page='home';}}}
   }catch(e){console.error(e);}
 }
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify({patterns:S.patterns,cfg:S.cfg,calib:S.calib,travelLog:S.travelLog}));return true;}catch(e){flash('⚠️ บันทึกไม่ได้','err');return false;}}
@@ -432,28 +436,25 @@ function calcJourney(){
   if(!legs.length)return null;
   const lastLeg=legs.filter(l=>l.t==='train').pop();
 
-  // ── กำหนด activeLegIdx: leg ที่ "กำลัง active" ──
-  // Logic: ดู train legs ตามลำดับ
-  // - ถ้า nowM ยังไม่ถึงเวลา arrive ของ leg นั้น → นั่นคือ leg ที่กำลัง active
-  // - ยกเว้น: ถ้า leg ถัดไป มี trainTime ≤ nowM+5 → ให้ leg ถัดไป active แทน (เตือน 5 นาทีก่อนต้องต่อ)
+  // ── กำหนด activeLegIdx ──
+  // ใช้ nowM เทียบกับ trainTime/arrive ของแต่ละ leg
+  // แต่ถ้า S.time ห่างจาก nowM เกิน 60 นาที (user ใส่เวลาล่วงหน้า/ย้อนหลัง)
+  // ให้ใช้ S.time เป็น reference แทน เพื่อให้ highlight ถูกต้องตามเวลาที่ user กำหนด
   const trainLegs=legs.filter(l=>l.t==='train');
-  let activeIdx=0; // index ใน trainLegs[]
+  const refM=Math.abs(nowM-toM(S.time))>60 ? toM(S.time) : nowM;
+  let activeIdx=0;
   for(let i=0;i<trainLegs.length;i++){
     const leg=trainLegs[i];
     const arrM=toM(leg.arrive);
-    if(nowM<=arrM){
-      // อยู่ใน leg นี้
-      // แต่ถ้า leg ถัดไปมีอยู่ และ trainTime ของ leg ถัดไป ≤ nowM+5 → active = leg ถัดไป
+    if(refM<=arrM){
       if(i+1<trainLegs.length){
         const nextTrM=toM(trainLegs[i+1].trainTime);
-        if(nextTrM-nowM<=5){activeIdx=i+1;break;}
+        if(nextTrM-refM<=5){activeIdx=i+1;break;}
       }
       activeIdx=i;break;
     }
-    // nowM เลย arrive ไปแล้ว → ไป leg ถัดไป
     activeIdx=i+1;
   }
-  // clamp
   if(activeIdx>=trainLegs.length)activeIdx=trainLegs.length-1;
 
   // ใส่ flag isActive ลงใน legs (train + transfer ก่อน active train)
