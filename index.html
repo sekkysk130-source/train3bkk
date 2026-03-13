@@ -611,11 +611,11 @@ function renderCalc(el){
   h+=`<div class="card" style="padding:12px 14px;margin-bottom:10px">
     <div style="font-size:10px;color:#64748B;letter-spacing:2px;margin-bottom:4px">⏰ เวลาถึง ${S.fromSt}</div>
     <div style="display:flex;gap:8px;align-items:center">
-      <input type="time" value="${S.time}" onchange="S.time=this.value;saveTimeToPattern();saveSess();render()" style="flex:1;font-size:28px;font-weight:300;padding:4px 10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);border-radius:9px;color:#F1F5F9;outline:none" class="mono">
-      <button class="btn" onclick="S.time=fM(new Date().getHours()*60+new Date().getMinutes());saveTimeToPattern();saveSess();render()" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(100,116,139,.1);background:rgba(99,102,241,.08);color:#A5B4FC;font-size:11px;font-weight:600">ตอนนี้</button>
+      <input type="time" value="${S.time}" oninput="S.time=this.value;saveSess();render()" onchange="S.time=this.value;saveSess();render()" style="flex:1;font-size:28px;font-weight:300;padding:4px 10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);border-radius:9px;color:#F1F5F9;outline:none" class="mono">
+      <button class="btn" onclick="S.time=fM(new Date().getHours()*60+new Date().getMinutes());saveSess();render()" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(100,116,139,.1);background:rgba(99,102,241,.08);color:#A5B4FC;font-size:11px;font-weight:600">ตอนนี้</button>
     </div>
     <div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap">
-      ${qT.map(t=>`<button class="btn" onclick="S.time='${t}';saveTimeToPattern();saveSess();render()" style="padding:3px 8px;border-radius:5px;background:${S.time===t?'rgba(139,92,246,.18)':'rgba(18,22,36,.4)'};color:${S.time===t?'#C4B5FD':'#475569'};font-size:10px">${t}</button>`).join('')}
+      ${qT.map(t=>`<button class="btn" onclick="S.time='${t}';saveSess();render()" style="padding:3px 8px;border-radius:5px;background:${S.time===t?'rgba(139,92,246,.18)':'rgba(18,22,36,.4)'};color:${S.time===t?'#C4B5FD':'#475569'};font-size:10px">${t}</button>`).join('')}
     </div>
   </div>`;
 
@@ -808,6 +808,14 @@ window.quickLog=(sched,displayedTime)=>{
   if(!S.calib[k])S.calib[k]={anchors:[],deleted:[]};
   S.calib[k].anchors=[...S.calib[k].anchors.filter(a=>a.orig!==closest),{orig:closest,real:realTime}];
   save();flash(`⚡ บันทึก ${realTime} (จาก ${closest})`);render();
+};
+
+// saveTimeToPattern — เก็บเวลาล่าสุดไว้ใน pattern ที่ active (ถ้ามี)
+window.saveTimeToPattern=()=>{
+  if(S._patIdx!=null&&S.patterns[S._patIdx]){
+    S.patterns[S._patIdx].lastTime=S.time;
+    save();
+  }
 };
 
 // Clock + auto-refresh (ทุก 15 วินาที เพื่อ highlight ขยับ real-time)
