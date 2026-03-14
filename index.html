@@ -824,5 +824,32 @@ setInterval(()=>{const e=document.getElementById('ck');if(e){const n=new Date();
 setInterval(()=>{if(S.page==='calc')render();},15000);
 render();
 </script>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAkwtcZaCGQF1S2zxuRsCb5RgitDyGjX84",
+  authDomain: "bangkok-train-timetable.firebaseapp.com",
+  databaseURL: "https://bangkok-train-timetable-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bangkok-train-timetable",
+  storageBucket: "bangkok-train-timetable.firebasestorage.app",
+  messagingSenderId: "686967977920",
+  appId: "1:686967977920:web:efd2463b48ae652fc73a25"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// test อ่านข้อมูล
+onValue(ref(db,"timetable"),(snapshot)=>{
+  const data = snapshot.val();
+  console.log("Realtime timetable:",data);
+});
+
+</script>
+
 </body>
 </html>
