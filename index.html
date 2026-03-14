@@ -822,9 +822,6 @@ window.saveTimeToPattern=()=>{
 // Clock + auto-refresh (ทุก 15 วินาที เพื่อ highlight ขยับ real-time)
 setInterval(()=>{const e=document.getElementById('ck');if(e){const n=new Date();e.textContent=fM(n.getHours()*60+n.getMinutes())+':'+String(n.getSeconds()).padStart(2,'0');}},1000);
 setInterval(()=>{if(S.page==='calc')render();},15000);
-render();
-</script>
-
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
@@ -843,13 +840,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// test อ่านข้อมูล
+/* -------- TEST FIREBASE -------- */
+
+// เขียนข้อมูลทดสอบ
+push(ref(db,"test"),{
+  time:new Date().toISOString()
+});
+
+// อ่าน timetable realtime
 onValue(ref(db,"timetable"),(snapshot)=>{
   const data = snapshot.val();
   console.log("Realtime timetable:",data);
 });
 
 </script>
-
-</body>
-</html>
