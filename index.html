@@ -822,35 +822,7 @@ window.saveTimeToPattern=()=>{
 // Clock + auto-refresh (ทุก 15 วินาที เพื่อ highlight ขยับ real-time)
 setInterval(()=>{const e=document.getElementById('ck');if(e){const n=new Date();e.textContent=fM(n.getHours()*60+n.getMinutes())+':'+String(n.getSeconds()).padStart(2,'0');}},1000);
 setInterval(()=>{if(S.page==='calc')render();},15000);
-<script type="module">
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAkwtcZaCGQF1S2zxuRsCb5RgitDyGjX84",
-  authDomain: "bangkok-train-timetable.firebaseapp.com",
-  databaseURL: "https://bangkok-train-timetable-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "bangkok-train-timetable",
-  storageBucket: "bangkok-train-timetable.firebasestorage.app",
-  messagingSenderId: "686967977920",
-  appId: "1:686967977920:web:efd2463b48ae652fc73a25"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-/* -------- TEST FIREBASE -------- */
-
-// เขียนข้อมูลทดสอบ
-push(ref(db,"test"),{
-  time:new Date().toISOString()
-});
-
-// อ่าน timetable realtime
-onValue(ref(db,"timetable"),(snapshot)=>{
-  const data = snapshot.val();
-  console.log("Realtime timetable:",data);
-});
-
+render();
 </script>
+</body>
+</html>
