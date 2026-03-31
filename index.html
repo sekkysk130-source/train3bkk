@@ -20,7 +20,7 @@ input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(.6)}
 .flash-err{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#FCA5A5}
 @keyframes pop{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:50;display:flex;align-items:flex-end;justify-content:center}
-.panel{background:#1E293B;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto}
+.panel{background:#1E293B;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:440px;max-height:85vh;overflow-y:auto}
 .editable{cursor:pointer;border-bottom:1.5px dashed rgba(250,204,21,.35)}
 .editable:active{border-color:#FACC15}
 .ed-arrive{border-bottom-color:rgba(96,165,250,.35)}
@@ -30,6 +30,45 @@ input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(.6)}
 .st-btn .xfer{font-size:9px;color:#F59E0B;margin-left:4px}
 .search-input{width:100%;padding:10px 14px;border-radius:10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.12);color:#F1F5F9;font-size:14px;outline:none;margin-bottom:10px}
 .line-tab{padding:8px 14px;border-radius:8px;font-size:11px;font-weight:600;flex-shrink:0}
+
+/* ── Train picker strip ── */
+.train-picker{display:flex;gap:5px;margin-top:8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+.train-pick-btn{
+  flex-shrink:0;min-width:72px;padding:8px 6px 6px;border-radius:10px;
+  background:rgba(11,14,24,.5);border:1.5px solid rgba(100,116,139,.12);
+  text-align:center;cursor:pointer;transition:all .15s;
+}
+.train-pick-btn.is-selected{
+  border-color:#FACC15;background:rgba(250,204,21,.08);
+}
+.train-pick-btn.is-passed{
+  opacity:.35;
+}
+.train-pick-btn .pt-label{font-size:8px;color:#475569;letter-spacing:1px;margin-bottom:2px}
+.train-pick-btn.is-selected .pt-label{color:rgba(250,204,21,.6)}
+.train-pick-btn .pt-time{font-size:15px;font-weight:700;color:#CBD5E1;font-family:monospace}
+.train-pick-btn.is-selected .pt-time{color:#FACC15;font-size:16px}
+.train-pick-btn .pt-wait{font-size:9px;color:#475569;margin-top:1px}
+.train-pick-btn.is-selected .pt-wait{color:rgba(250,204,21,.6)}
+
+/* ── Edit train time inline ── */
+.train-edit-row{
+  display:flex;align-items:center;gap:6px;
+  margin-top:8px;padding:8px 10px;
+  background:rgba(11,14,24,.4);border-radius:9px;
+  border:1px solid rgba(250,204,21,.12);
+}
+.train-edit-row input[type="time"]{
+  flex:1;background:transparent;border:none;outline:none;
+  color:#FACC15;font-size:18px;font-weight:700;font-family:monospace;
+  min-width:0;
+}
+.train-edit-label{font-size:10px;color:#475569;white-space:nowrap}
+.train-edit-apply{
+  padding:5px 10px;border-radius:7px;
+  background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.25);
+  color:#FACC15;font-size:11px;font-weight:700;
+}
 
 /* ── Next Train Highlight ── */
 .train-time-primary{
@@ -44,30 +83,6 @@ input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(.6)}
 .train-time-passed{
   font-size:20px;font-weight:500;color:#334155;text-decoration:line-through;
 }
-
-/* ── Upcoming Trains Strip ── */
-.upcoming-strip{
-  display:flex;gap:6px;margin-top:8px;
-}
-.upcoming-train{
-  flex:1;padding:7px 8px;border-radius:9px;
-  background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);
-  text-align:center;
-}
-.upcoming-train.next1{
-  border-color:rgba(250,204,21,.3);
-  background:rgba(250,204,21,.04);
-}
-.upcoming-train.next2{
-  border-color:rgba(96,165,250,.15);
-  background:rgba(96,165,250,.03);
-}
-.upcoming-train .ut-label{font-size:8px;color:#475569;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px}
-.upcoming-train .ut-time{font-size:14px;font-weight:700;color:#CBD5E1;font-family:monospace}
-.upcoming-train.next1 .ut-time{color:#FACC15;font-size:15px}
-.upcoming-train.next2 .ut-time{color:#93C5FD}
-.upcoming-train .ut-wait{font-size:9px;color:#475569;margin-top:1px}
-.upcoming-train.next1 .ut-wait{color:rgba(250,204,21,.6)}
 </style>
 </head>
 <body>
@@ -104,15 +119,13 @@ const XFERS=[
 const DEFAULT_STATION_TIME=2;
 
 // ================================================================
-// SCHEDULE — จากตารางเวลาจริง (ข้อมูล Official Timetables)
+// UTILS
 // ================================================================
 const toM=t=>{const[h,m]=t.split(':').map(Number);return h*60+m};
 const fM=m=>{const t=((m%1440)+1440)%1440;return`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`};
 
-// genTrains: สร้างตารางรถจากเวลาแรก, เวลาสุดท้าย, ช่วง interval ตามเวลา
 function genTrains(first,last,slots){
   const r=[];const f=toM(first);let lm=toM(last);
-  // handle overnight last trains (e.g. last=00:07 → +1440)
   if(lm<f) lm+=1440;
   let c=f;
   while(c<=lm){
@@ -140,41 +153,33 @@ function calibrate(gen,anchors,deleted){
     for(const a of sa){if(toM(a.orig)<=tm)bef=a;if(toM(a.orig)>=tm&&!aft)aft=a;}
     let off=0;
     if(bef&&aft&&bef!==aft){
-      // Between 2 anchors: interpolate
       const bo=toM(bef.orig),ao=toM(aft.orig);
       const bOff=toM(bef.real)-bo,aOff=toM(aft.real)-ao;
       off=Math.round(bOff+((aOff-bOff)*((tm-bo)/(ao-bo))));
     } else if(bef){
-      // Forward-bias: anchor ล่าสุดใช้ offset ไปข้างหน้าทั้งหมด
       off=toM(bef.real)-toM(bef.orig);
     } else if(aft){
-      // ก่อน anchor แรก: ใช้ offset ของ anchor แรก
       off=toM(aft.real)-toM(aft.orig);
     }
     res.push(fM(tm+off));
   }
-  // เพิ่ม anchor real times ที่อาจไม่ตรงกับ base
   for(const a of sa)if(!res.includes(a.real))res.push(a.real);
   return[...new Set(res)].sort((a,b)=>toM(a)-toM(b));
 }
 
 function findNext(trains,after){const am=toM(after);for(const t of trains)if(toM(t)>=am)return t;return null;}
 
-// หา N รถถัดไป (สำหรับแสดง upcoming)
+// หา N รถถัดไปจาก after (inclusive)
 function findNextN(trains,after,n){
-  const am=toM(after);
-  const res=[];
+  const am=toM(after);const res=[];
   for(const t of trains){if(toM(t)>=am){res.push(t);if(res.length>=n)break;}}
   return res;
 }
 
 // ================================================================
-// SCHEDULES — ข้อมูลตรงจากตาราง Official
+// SCHEDULES
 // ================================================================
 const SCHEDULES={
-  // ── สายสีม่วง (MRT Purple) ──
-  // ไปเตาปูน (fwd): คลองบางไผ่ 05:30 → ...
-  // วันธรรมดา: 05:30-06:30(7m) 06:30-08:30(5m) 08:30-09:30(6m) 09:30-17:00(7m) 17:00-20:00(5m) 20:00-21:00(6m) 21:00-22:56(10m)
   purple_fwd:{
     weekday:genTrains("05:30","22:56",[
       {from:"05:30",to:"06:30",iv:7},{from:"06:30",to:"08:30",iv:5},
@@ -183,7 +188,6 @@ const SCHEDULES={
     ]),
     weekend:genTrains("06:00","22:56",[{from:"06:00",to:"23:00",iv:10}])
   },
-  // กลับ (rev): เตาปูน → คลองบางไผ่
   purple_rev:{
     weekday:genTrains("06:00","23:33",[
       {from:"06:00",to:"06:30",iv:7},{from:"06:30",to:"08:30",iv:5},
@@ -192,9 +196,6 @@ const SCHEDULES={
     ]),
     weekend:genTrains("06:18","23:33",[{from:"06:18",to:"23:33",iv:10}])
   },
-
-  // ── สายสีน้ำเงิน (MRT Blue Loop) ──
-  // วันธรรมดา: 05:30-07:00(5m) 07:00-09:00(3m) 09:00-09:30(7m) 09:30-16:30(5m) 16:30-17:30(4m) 17:30-19:30(3.5≈4m) 19:30-21:00(5m) 21:00-23:30(8m)
   blue_cw:{
     weekday:genTrains("05:30","23:30",[
       {from:"05:30",to:"07:00",iv:5},{from:"07:00",to:"09:00",iv:3},
@@ -219,9 +220,6 @@ const SCHEDULES={
       {from:"16:00",to:"19:00",iv:6},{from:"19:00",to:"23:59",iv:8}
     ])
   },
-
-  // ── BTS สายสีเขียว สุขุมวิท (Sukhumvit Line) ──
-  // วันธรรมดา: 05:15-06:00(6m) 06:00-07:00(5m) 07:00-09:00(2.40→3m) 09:00-09:30(3.35→4m) 09:30-16:00(6m) 16:00-16:30(5m) 16:30-17:00(4.25m≈4m) 17:00-20:00(2.40→3m) 20:00-21:00(4.25→4m) 21:00-22:00(6m) 22:00-00:44(8m)
   green_north:{
     weekday:genTrains("05:15","23:50",[
       {from:"05:15",to:"06:00",iv:6},{from:"06:00",to:"07:00",iv:5},
@@ -248,9 +246,6 @@ const SCHEDULES={
       {from:"11:00",to:"21:00",iv:5},{from:"21:00",to:"24:00",iv:8}
     ])
   },
-
-  // ── BTS สายสีลม (Silom Line) ──
-  // วันธรรมดา: 05:30-07:00(6m) 07:00-09:00(3m) 09:00-16:00(6m) 16:00-20:00(3m) 20:00-24:00(7m)
   green_silom_fwd:{
     weekday:genTrains("05:30","23:54",[
       {from:"05:30",to:"07:00",iv:6},{from:"07:00",to:"09:00",iv:3},
@@ -356,6 +351,9 @@ let S={
   showCfg:false,
   selectTarget:null,
   searchQ:'',filterLine:null,
+  // ★ NEW: เก็บ override ขบวนที่เลือกต่อ leg index
+  // key = legIndex (train step index), value = เวลาที่ user เลือก/แก้ไข
+  selectedTrains:{},
 };
 
 function load(){
@@ -365,7 +363,6 @@ function load(){
     const ss=localStorage.getItem(SESS_KEY);
     if(ss){
       const d=JSON.parse(ss);
-      // ขยาย expiry เป็น 12 ชม. (เดิม 3 ชม. ไม่พอสำหรับวันทำงาน)
       if(d.at&&Date.now()-d.at<12*3600000){
         if(d.time)S.time=d.time;
         if(typeof d.wknd==='boolean')S.wknd=d.wknd;
@@ -374,7 +371,6 @@ function load(){
         if(d.toSt)S.toSt=d.toSt;
         if(d.toLine)S.toLine=d.toLine;
         if(d.page)S.page=d.page;
-        // Reconstruct route จาก fromSt/toSt (เพราะ route object ไม่ได้เก็บใน session)
         if(S.fromSt&&S.fromLine&&S.toSt&&S.toLine){
           S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);
         }
@@ -388,7 +384,7 @@ function flash(m,t){const e=document.createElement('div');e.className='flash '+(
 
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)saveSess();
-  else{/* กลับมาจาก switch app → re-render เลย */if(S.page==='calc')render();}
+  else{if(S.page==='calc')render();}
 });
 window.addEventListener('pagehide',saveSess);
 window.addEventListener('beforeunload',saveSess);
@@ -407,58 +403,73 @@ function statusOf(w){
   return{text:'รอชิลๆ',emoji:'☕',color:'#818CF8',bg:'rgba(129,140,248,.08)',bd:'rgba(129,140,248,.18)'};
 }
 
-// Adaptive walk time: ใช้ค่าเฉลี่ยจาก walkLog ถ้ามี ไม่งั้นใช้ค่าจาก XFERS
-function getWalkTime(stationA,stationB,defaultWalk){
-  const wk=`${stationA}_${stationB}`;
-  const log=S.walkLog[wk];
-  if(log&&log.length>0){
-    const recent=log.slice(-5);
-    return Math.round(recent.reduce((s,e)=>s+e.mins,0)/recent.length);
-  }
-  return defaultWalk;
-}
-function getWalkKey(stA,stB){return`${stA}_${stB}`;}
-
 // ================================================================
-// CALCULATE JOURNEY — with upcoming trains
+// CALCULATE JOURNEY
 // ================================================================
-
-// Route fingerprint: ใช้แยก travelLog ของแต่ละเส้นทาง
 function routeKey(fromSt,fromLine,toSt,toLine){
   return`${fromLine}:${fromSt}|${toLine}:${toSt}`;
 }
 
 function calcJourney(){
   if(!S.route||!S.route.length)return null;
-  const legs=[];let cur=S.time;
+  const legs=[];
+
+  // เริ่มจากเวลาถึงสถานีต้นทาง
+  let cur=S.time;
+
   const rKey=routeKey(S.fromSt,S.fromLine,S.toSt,S.toLine);
   const nowM=toM(fM(new Date().getHours()*60+new Date().getMinutes()));
 
-  // Filter เอาแค่ train steps (ข้าม xfer — ไม่บวกเวลาเดิน)
+  // แยกเฉพาะ train steps (ข้าม xfer type)
   const trainSteps=S.route.filter(s=>s.type==='train');
 
   for(let i=0;i<trainSteps.length;i++){
     const step=trainSteps[i];
     const sk=getSchedKey(step.line,step.dir);
     const trains=getSched(sk);
-    const nextTrains=findNextN(trains,cur,3);
-    if(!nextTrains.length)return{err:`ไม่มีรถ${LINES[step.line].name}แล้ว`};
-    const tr=nextTrains[0];
-    const upcoming=nextTrains.slice(1);
+
+    // ★ ถ้า user เลือก/แก้ไขขบวนนี้แล้ว ใช้เวลานั้น (ตรวจว่าไม่ก่อน cur)
+    let tr;
+    const override=S.selectedTrains[i];
+    if(override){
+      // ใช้ override เฉพาะเมื่อ >= cur (ไม่งั้น fallback หา next)
+      if(toM(override)>=toM(cur)){
+        tr=override;
+      } else {
+        // override เก่าไปแล้ว → clear แล้วหาใหม่
+        delete S.selectedTrains[i];
+        tr=findNext(trains,cur);
+      }
+    } else {
+      tr=findNext(trains,cur);
+    }
+
+    if(!tr)return{err:`ไม่มีรถ${LINES[step.line].name}แล้ว`};
+
     const wait=toM(tr)-toM(cur);
     const tKey=`${rKey}__${step.line}_${step.dir}`;
     const log=S.travelLog[tKey];
     const travel=log?.length?Math.round(log.slice(-5).reduce((s,e)=>s+e.mins,0)/log.slice(-5).length):step.stations*(S.cfg.stationTime||2);
     const arrive=fM(toM(tr)+travel);
-    legs.push({t:'train',line:step.line,lc:LINES[step.line].color,lineName:LINES[step.line].name,
+
+    // หา upcoming trains (รถถัดไปจากที่เลือก + 1 ขบวน ก่อนหน้า + หลัง)
+    // แสดง 5 ขบวนรอบๆ เวลา cur ให้เลือก
+    const pickFrom=fM(Math.max(toM(cur),toM(tr)-15));// แสดงรถที่ผ่านไปแล้วในช่วง 15 นาทีด้วย
+    const allUpcoming=findNextN(trains,pickFrom,6);
+
+    legs.push({
+      t:'train',line:step.line,lc:LINES[step.line].color,lineName:LINES[step.line].name,
       from:step.from,to:step.to,stations:step.stations,
       atStation:i===0?S.time:undefined,
       trainTime:tr,wait,
       arrive,travel,schedKey:sk,travelKey:tKey,
       logCount:log?.length||0,isAvg:log?.length>0,
-      upcoming,curTime:cur,
+      allUpcoming,       // รายการรถให้เลือก
+      curTime:cur,       // เวลา reference (เพื่อ mark ว่ารถผ่านไปแล้วหรือยัง)
+      legIdx:i,          // index ของ leg นี้
+      isOverride:!!override, // มี manual override หรือเปล่า
     });
-    // เวลาถึงปลายทางของสายนี้ = base สำหรับหารถสายถัดไป (ไม่บวกเวลาเดิน)
+
     cur=arrive;
   }
 
@@ -576,29 +587,68 @@ function renderSelect(el){
   el.innerHTML=h;
 }
 
-// ── Helper: render upcoming trains strip ──
-function renderUpcoming(leg, curTime){
-  if(!leg.upcoming||!leg.upcoming.length) return '';
-  const curM=toM(curTime);
-  let strip=`<div class="upcoming-strip">`;
-  // Slot 0 = ขบวนถัดไป (next+1), slot 1 = next+2
-  const labels=['ขบวนถัดไป','ขบวนต่อไป'];
-  const cls=['next1','next2'];
-  leg.upcoming.forEach((t,idx)=>{
-    const waitMin=toM(t)-curM;
-    const waitLbl=waitMin>0?`+${waitMin} นาที`:'ใกล้ถึงแล้ว';
-    strip+=`<div class="upcoming-train ${cls[idx]}">
-      <div class="ut-label">${labels[idx]}</div>
-      <div class="ut-time mono">${t}</div>
-      <div class="ut-wait">${waitLbl}</div>
-    </div>`;
-  });
+// ================================================================
+// RENDER TRAIN PICKER — ★ NEW
+// ================================================================
+function renderTrainPicker(leg){
+  const nowM=toM(fM(new Date().getHours()*60+new Date().getMinutes()));
+  const curM=toM(leg.curTime);
+  const selTime=leg.trainTime;
+
+  // Label สำหรับแต่ละขบวน
+  const labelOf=(t,idx)=>{
+    const diff=toM(t)-curM;
+    if(toM(t)===toM(selTime))return'เลือก';
+    if(diff<0)return'ผ่านแล้ว';
+    if(diff===0)return'เดี๋ยวนี้';
+    return`+${diff}m`;
+  };
+
+  let strip=`<div style="margin-top:10px">
+    <div style="font-size:9px;color:#475569;letter-spacing:1.5px;margin-bottom:5px">🚉 เลือกขบวน</div>
+    <div class="train-picker" id="picker_${leg.legIdx}">`;
+
+  for(const t of leg.allUpcoming){
+    const tm=toM(t);
+    const isPassed=tm<curM;
+    const isSelected=t===selTime;
+    const waitM=tm-curM;
+    const waitLabel=isPassed?'ผ่านแล้ว':waitM===0?'ตอนนี้':`+${waitM}m`;
+
+    strip+=`<button class="btn train-pick-btn${isSelected?' is-selected':''}${isPassed?' is-passed':''}"
+      onclick="pickTrain(${leg.legIdx},'${t}')">
+      <div class="pt-label">${isSelected?'✓ เลือก':waitLabel}</div>
+      <div class="pt-time">${t}</div>
+      <div class="pt-wait">${isSelected?`รอ ${leg.wait}m`:(isPassed?'—':waitLabel)}</div>
+    </button>`;
+  }
+
+  strip+=`</div>`;
+
+  // ★ Edit row: แก้เวลาได้เองถ้ารถไม่ตรงตาราง
+  strip+=`<div class="train-edit-row">
+    <div class="train-edit-label">✏️ แก้เวลา:</div>
+    <input type="time" id="edit_train_${leg.legIdx}" value="${selTime}"
+      onchange="applyEditTrain(${leg.legIdx},this.value)">
+    <button class="btn train-edit-apply"
+      onclick="applyEditTrain(${leg.legIdx},document.getElementById('edit_train_${leg.legIdx}').value)">
+      ใช้เวลานี้
+    </button>
+  </div>`;
+
+  // ★ Reset ถ้ามี override
+  if(leg.isOverride){
+    strip+=`<button class="btn" onclick="resetTrain(${leg.legIdx})"
+      style="margin-top:5px;padding:4px 10px;border-radius:6px;background:rgba(100,116,139,.08);color:#64748B;font-size:10px;width:100%">
+      ↺ รีเซ็ต (ใช้รถถัดไปอัตโนมัติ)
+    </button>`;
+  }
+
   strip+=`</div>`;
   return strip;
 }
 
 function renderCalc(el){
-  // ถ้า route หาย (refresh แล้ว reconstruct ไม่ได้) → กลับ home
   if(!S.route||!S.route.length){
     if(S.fromSt&&S.fromLine&&S.toSt&&S.toLine){
       S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);
@@ -609,7 +659,7 @@ function renderCalc(el){
   const now=new Date();const ck=fM(now.getHours()*60+now.getMinutes());
 
   let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-    <button class="btn" onclick="S.page='home';render()" style="padding:8px 12px;border-radius:8px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:13px">← กลับ</button>
+    <button class="btn" onclick="S.page='home';S.selectedTrains={};render()" style="padding:8px 12px;border-radius:8px;background:rgba(100,116,139,.1);color:#94A3B8;font-size:13px">← กลับ</button>
     <div style="flex:1"><div style="font-size:14px;font-weight:700">${S.fromSt} → ${S.toSt}</div></div>
     <div id="ck" class="mono" style="font-size:14px;color:#94A3B8">${ck}</div>
   </div>`;
@@ -620,18 +670,18 @@ function renderCalc(el){
   }
 
   h+=`<div style="display:flex;gap:6px;margin-bottom:10px">
-    ${[false,true].map(w=>`<button class="btn" onclick="S.wknd=${w};saveSess();render()" style="flex:1;padding:7px;border-radius:8px;background:${S.wknd===w?'rgba(99,102,241,.12)':'rgba(18,22,36,.4)'};color:${S.wknd===w?'#A5B4FC':'#475569'};font-size:11px;font-weight:${S.wknd===w?600:400};border:${S.wknd===w?'1px solid rgba(99,102,241,.18)':'1px solid transparent'}">${w?'🗓 วันหยุด':'📅 วันธรรมดา'}</button>`).join('')}
+    ${[false,true].map(w=>`<button class="btn" onclick="S.wknd=${w};S.selectedTrains={};saveSess();render()" style="flex:1;padding:7px;border-radius:8px;background:${S.wknd===w?'rgba(99,102,241,.12)':'rgba(18,22,36,.4)'};color:${S.wknd===w?'#A5B4FC':'#475569'};font-size:11px;font-weight:${S.wknd===w?600:400};border:${S.wknd===w?'1px solid rgba(99,102,241,.18)':'1px solid transparent'}">${w?'🗓 วันหยุด':'📅 วันธรรมดา'}</button>`).join('')}
   </div>`;
 
   const qT=['05:30','06:00','06:30','07:00','07:30','08:00','17:00','18:00','19:00','20:00'];
   h+=`<div class="card" style="padding:12px 14px;margin-bottom:10px">
     <div style="font-size:10px;color:#64748B;letter-spacing:2px;margin-bottom:4px">⏰ เวลาถึง ${S.fromSt}</div>
     <div style="display:flex;gap:8px;align-items:center">
-      <input type="time" value="${S.time}" onchange="S.time=this.value;saveTimeToPattern();saveSess();render()" style="flex:1;font-size:28px;font-weight:300;padding:4px 10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);border-radius:9px;color:#F1F5F9;outline:none" class="mono">
-      <button class="btn" onclick="S.time=fM(new Date().getHours()*60+new Date().getMinutes());saveTimeToPattern();saveSess();render()" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(100,116,139,.1);background:rgba(99,102,241,.08);color:#A5B4FC;font-size:11px;font-weight:600">ตอนนี้</button>
+      <input type="time" value="${S.time}" onchange="S.time=this.value;S.selectedTrains={};saveTimeToPattern();saveSess();render()" style="flex:1;font-size:28px;font-weight:300;padding:4px 10px;background:rgba(11,14,24,.5);border:1px solid rgba(100,116,139,.1);border-radius:9px;color:#F1F5F9;outline:none" class="mono">
+      <button class="btn" onclick="S.time=fM(new Date().getHours()*60+new Date().getMinutes());S.selectedTrains={};saveTimeToPattern();saveSess();render()" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(100,116,139,.1);background:rgba(99,102,241,.08);color:#A5B4FC;font-size:11px;font-weight:600">ตอนนี้</button>
     </div>
     <div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap">
-      ${qT.map(t=>`<button class="btn" onclick="S.time='${t}';saveTimeToPattern();saveSess();render()" style="padding:3px 8px;border-radius:5px;background:${S.time===t?'rgba(139,92,246,.18)':'rgba(18,22,36,.4)'};color:${S.time===t?'#C4B5FD':'#475569'};font-size:10px">${t}</button>`).join('')}
+      ${qT.map(t=>`<button class="btn" onclick="S.time='${t}';S.selectedTrains={};saveTimeToPattern();saveSess();render()" style="padding:3px 8px;border-radius:5px;background:${S.time===t?'rgba(139,92,246,.18)':'rgba(18,22,36,.4)'};color:${S.time===t?'#C4B5FD':'#475569'};font-size:10px">${t}</button>`).join('')}
     </div>
   </div>`;
 
@@ -648,13 +698,13 @@ function renderCalc(el){
   </div>`;
 
   R.legs.forEach((leg,i)=>{
-    // ทุก leg เป็น train (ไม่มี xfer แล้ว)
-    const isActive = leg.isActive;
+    const isActive=leg.isActive;
     const avgLbl=leg.isAvg?`<span style="font-size:8px;color:#60A5FA">(avg ${leg.logCount}x)</span>`:'';
+    const overrideLbl=leg.isOverride?`<span style="font-size:8px;color:#FACC15">✦ เลือกเอง</span>`:'';
 
-    const cardStyle = isActive
-      ? `padding:12px 14px;margin-bottom:6px;border:1px solid ${leg.lc}50;box-shadow:0 0 12px ${leg.lc}18;`
-      : `padding:12px 14px;margin-bottom:6px;opacity:0.6;`;
+    const cardStyle=isActive
+      ?`padding:12px 14px;margin-bottom:6px;border:1px solid ${leg.lc}50;box-shadow:0 0 12px ${leg.lc}18;`
+      :`padding:12px 14px;margin-bottom:6px;opacity:0.65;`;
 
     h+=`<div style="display:flex">
       <div style="width:9px;display:flex;flex-direction:column;align-items:center">
@@ -666,72 +716,98 @@ function renderCalc(el){
         <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;background:${leg.lc}${isActive?'22':'10'};margin-bottom:4px">
           <div style="width:5px;height:5px;border-radius:50%;background:${leg.lc}"></div>
           <span style="font-size:9px;font-weight:700;color:${leg.lc}">${leg.lineName} (${leg.stations} สถานี)${isActive?' 🔴':''}</span>
+          ${overrideLbl}
         </div>
-        <div class="card" style="${cardStyle}">
+        <div class="card" style="${cardStyle}">`;
 
-          ${isActive ? `
-          <!-- === ACTIVE === -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-            <div>
-              <div style="font-size:11px;color:#94A3B8">${leg.from} → ${leg.to}</div>
-              ${leg.wait>0?`<div style="font-size:11px;color:#475569;margin-top:2px">รถมาใน <strong style="color:#FACC15">${leg.wait}</strong> นาที</div>`
-              :`<div style="font-size:11px;color:#4ADE80;margin-top:2px">🚇 ขึ้นได้เลย!</div>`}
-            </div>
-            <div style="text-align:right">
-              <div class="tiny">รถออก</div>
-              <div class="mono train-time-primary active" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="cursor:pointer">${leg.trainTime}</div>
-            </div>
-          </div>
+    if(isActive){
+      // ── ACTIVE leg ──
+      h+=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div>
+          <div style="font-size:11px;color:#94A3B8">${leg.from} → ${leg.to}</div>
+          ${leg.wait>0
+            ?`<div style="font-size:11px;color:#475569;margin-top:2px">รถมาใน <strong style="color:#FACC15">${leg.wait}</strong> นาที</div>`
+            :`<div style="font-size:11px;color:#4ADE80;margin-top:2px">🚇 ขึ้นได้เลย!</div>`}
+        </div>
+        <div style="text-align:right">
+          <div class="tiny">รถออก</div>
+          <div class="mono train-time-primary active">${leg.trainTime}</div>
+        </div>
+      </div>`;
 
-          ${renderUpcoming(leg, leg.curTime)}
+      // ★ Train Picker
+      h+=renderTrainPicker(leg);
 
-          <button class="btn" onclick="quickLog('${leg.schedKey}','${leg.trainTime}')" style="width:100%;margin-top:8px;padding:12px;border-radius:10px;background:linear-gradient(135deg,rgba(250,204,21,.12),rgba(34,197,94,.12));border:1px solid rgba(250,204,21,.25);color:#FACC15;font-size:13px;font-weight:700">
-            ⚡ รถมาแล้ว! กดบันทึก
-          </button>
+      h+=`<div style="height:1px;background:rgba(100,116,139,.08);margin:10px 0"></div>`;
 
-          <div style="height:1px;background:rgba(100,116,139,.06);margin:8px 0"></div>
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div style="font-size:10px;color:#475569">🕐 ${leg.travel} นาที ${avgLbl}</div>
-            <div style="text-align:right">
-              <div class="tiny">ถึง ${leg.to}</div>
-              <div class="mono" style="font-size:16px;font-weight:700;color:#4ADE80">${leg.arrive}</div>
-            </div>
-          </div>
-          <button class="btn" onclick="editArrive('${leg.travelKey}','${leg.trainTime}','${leg.arrive}','${leg.from}','${leg.to}')" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.15);color:#93C5FD;font-size:11px;font-weight:600">
-            🕐 ถึง${leg.to}แล้ว? กดบันทึก
-          </button>
+      h+=`<button class="btn" onclick="quickLog('${leg.schedKey}','${leg.trainTime}')" style="width:100%;padding:11px;border-radius:10px;background:linear-gradient(135deg,rgba(250,204,21,.12),rgba(34,197,94,.12));border:1px solid rgba(250,204,21,.25);color:#FACC15;font-size:13px;font-weight:700">
+        ⚡ รถมาแล้ว! กดบันทึก
+      </button>`;
 
-          ` : `
-          <!-- === INACTIVE === -->
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <div><div class="tiny">ขึ้น</div><div style="font-size:12px;font-weight:700">${leg.from}</div></div>
-            <div style="text-align:right">
-              <div class="tiny">ออก</div>
-              <div class="mono editable" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:14px;font-weight:700;color:#CBD5E1">${leg.trainTime}</div>
-            </div>
-          </div>
-          ${renderUpcoming(leg, leg.curTime)}
-          <div style="display:flex;align-items:center;gap:5px;margin:3px 0"><div style="flex:1;height:1px;background:${leg.lc}20"></div><span style="font-size:8px;color:#475569">🕐 ${leg.travel}m ${avgLbl}</span><div style="flex:1;height:1px;background:${leg.lc}20"></div></div>
-          <div style="display:flex;justify-content:space-between;margin-top:3px">
-            <div><div class="tiny">ลง</div><div style="font-size:12px;font-weight:700">${leg.to}</div></div>
-            <div style="text-align:right">
-              <div class="tiny">ถึง</div>
-              <div class="mono editable ed-arrive" onclick="editArrive('${leg.travelKey}','${leg.trainTime}','${leg.arrive}','${leg.from}','${leg.to}')" style="font-size:14px;font-weight:700;color:#4ADE80">${leg.arrive}</div>
-            </div>
-          </div>
-          `}
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <div style="font-size:10px;color:#475569">🕐 ${leg.travel} นาที ${avgLbl}</div>
+        <div style="text-align:right">
+          <div class="tiny">ถึง ${leg.to}</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:#4ADE80">${leg.arrive}</div>
         </div>
       </div>
-    </div>`;
+      <button class="btn" onclick="editArrive('${leg.travelKey}','${leg.trainTime}','${leg.arrive}','${leg.from}','${leg.to}')" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.15);color:#93C5FD;font-size:11px;font-weight:600">
+        🕐 ถึง${leg.to}แล้ว? กดบันทึก
+      </button>`;
+    } else {
+      // ── INACTIVE leg ──
+      h+=`<div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <div><div class="tiny">ขึ้น</div><div style="font-size:12px;font-weight:700">${leg.from}</div></div>
+        <div style="text-align:right">
+          <div class="tiny">ออก</div>
+          <div class="mono editable" onclick="editDepart('${leg.schedKey}','${leg.trainTime}')" style="font-size:14px;font-weight:700;color:#CBD5E1">${leg.trainTime}</div>
+        </div>
+      </div>`;
+
+      // ★ Train Picker (ย่อ: แสดงแค่ strip ไม่มี edit row เพราะ inactive)
+      h+=renderTrainPickerCompact(leg);
+
+      h+=`<div style="display:flex;align-items:center;gap:5px;margin:5px 0"><div style="flex:1;height:1px;background:${leg.lc}20"></div><span style="font-size:8px;color:#475569">🕐 ${leg.travel}m ${avgLbl}</span><div style="flex:1;height:1px;background:${leg.lc}20"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px">
+        <div><div class="tiny">ลง</div><div style="font-size:12px;font-weight:700">${leg.to}</div></div>
+        <div style="text-align:right">
+          <div class="tiny">ถึง</div>
+          <div class="mono editable ed-arrive" onclick="editArrive('${leg.travelKey}','${leg.trainTime}','${leg.arrive}','${leg.from}','${leg.to}')" style="font-size:14px;font-weight:700;color:#4ADE80">${leg.arrive}</div>
+        </div>
+      </div>`;
+    }
+
+    h+=`</div></div></div>`;
   });
 
   el.innerHTML=h;
 }
 
+// ★ Compact picker สำหรับ inactive legs
+function renderTrainPickerCompact(leg){
+  const curM=toM(leg.curTime);
+  let strip=`<div style="display:flex;gap:4px;margin:6px 0;overflow-x:auto;padding-bottom:2px">`;
+  for(const t of leg.allUpcoming){
+    const tm=toM(t);
+    const isPassed=tm<curM;
+    const isSelected=t===leg.trainTime;
+    strip+=`<button class="btn" onclick="pickTrain(${leg.legIdx},'${t}')"
+      style="flex-shrink:0;padding:4px 10px;border-radius:7px;
+      background:${isSelected?'rgba(250,204,21,.1)':'rgba(11,14,24,.4)'};
+      border:1.5px solid ${isSelected?'rgba(250,204,21,.4)':'rgba(100,116,139,.1)'};
+      color:${isSelected?'#FACC15':isPassed?'#334155':'#94A3B8'};
+      font-size:11px;font-family:monospace;font-weight:${isSelected?700:400};
+      text-decoration:${isPassed&&!isSelected?'line-through':'none'}">
+      ${t}
+    </button>`;
+  }
+  strip+=`</div>`;
+  return strip;
+}
+
 // ================================================================
 // ACTIONS
 // ================================================================
-// Save time back to the active pattern
 window.saveTimeToPattern=()=>{
   if(typeof S._patIdx==='number'&&S.patterns[S._patIdx]){
     S.patterns[S._patIdx].lastTime=S.time;save();
@@ -741,15 +817,16 @@ window.saveTimeToPattern=()=>{
 window.startNewRoute=()=>{S.selectTarget='from';S.searchQ='';S.filterLine=null;S.page='select';render();};
 window.selectStation=(st,line)=>{
   if(S.selectTarget==='from'){S.fromSt=st;S.fromLine=line;S.selectTarget='to';S.searchQ='';render();}
-  else{S.toSt=st;S.toLine=line;S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);S.page='calc';saveSess();render();}
+  else{S.toSt=st;S.toLine=line;S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);S.selectedTrains={};S.page='calc';saveSess();render();}
 };
 window.usePattern=(i)=>{
   const p=S.patterns[i];if(!p)return;
   S.fromSt=p.fromSt;S.fromLine=p.fromLine;S.toSt=p.toSt;S.toLine=p.toLine;
-  // Restore time saved with this pattern, or use current time
   if(p.lastTime){S.time=p.lastTime;}
   else{const n=new Date();S.time=fM(n.getHours()*60+n.getMinutes());}
-  S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);S.page='calc';S._patIdx=i;saveSess();render();
+  S.route=findRoute(S.fromSt,S.fromLine,S.toSt,S.toLine);
+  S.selectedTrains={};
+  S.page='calc';S._patIdx=i;saveSess();render();
 };
 window.saveAsPattern=()=>{
   const idx=S.patterns.findIndex(p=>!p);if(idx<0)return flash('เต็มแล้ว (3 เส้นทาง)','err');
@@ -758,6 +835,42 @@ window.saveAsPattern=()=>{
   save();flash('⭐ บันทึกแล้ว');render();
 };
 window.deletePattern=(i)=>{S.patterns[i]=null;save();render();};
+
+// ★ เลือกขบวนจาก picker
+window.pickTrain=(legIdx,trainTime)=>{
+  S.selectedTrains[legIdx]=trainTime;
+  // Clear override ของ leg ถัดไปทั้งหมด (เพราะเวลาเปลี่ยน)
+  const legCount=S.route?S.route.filter(s=>s.type==='train').length:0;
+  for(let i=legIdx+1;i<legCount;i++){
+    delete S.selectedTrains[i];
+  }
+  render();
+};
+
+// ★ แก้เวลา manual แล้วกด apply
+window.applyEditTrain=(legIdx,timeVal)=>{
+  if(!timeVal)return;
+  S.selectedTrains[legIdx]=timeVal;
+  // Clear downstream overrides
+  const legCount=S.route?S.route.filter(s=>s.type==='train').length:0;
+  for(let i=legIdx+1;i<legCount;i++){
+    delete S.selectedTrains[i];
+  }
+  flash(`✦ ใช้เวลา ${timeVal}`);
+  render();
+};
+
+// ★ Reset override กลับเป็น auto
+window.resetTrain=(legIdx)=>{
+  delete S.selectedTrains[legIdx];
+  // Clear downstream ด้วย
+  const legCount=S.route?S.route.filter(s=>s.type==='train').length:0;
+  for(let i=legIdx+1;i<legCount;i++){
+    delete S.selectedTrains[i];
+  }
+  flash('↺ รีเซ็ตแล้ว');
+  render();
+};
 
 window.editDepart=(sched,currentTime)=>{
   document.querySelector('.overlay')?.remove();
@@ -795,32 +908,20 @@ window.editArrive=(tk,dep,arr,fr,to)=>{
 
 window.doSaveA=(tk,dep)=>{const v=document.getElementById('ed_val')?.value;if(!v)return;const mins=((toM(v)-toM(dep))%1440+1440)%1440;if(mins<=0||mins>120){flash('เวลาไม่ถูกต้อง','err');return;}const today=new Date().toLocaleDateString('th-TH',{day:'numeric',month:'short'});if(!S.travelLog[tk])S.travelLog[tk]=[];S.travelLog[tk].push({depart:dep,arrive:v,mins,date:today});if(S.travelLog[tk].length>20)S.travelLog[tk]=S.travelLog[tk].slice(-20);save();document.querySelector('.overlay')?.remove();flash(`🕐 ${mins}m บันทึกแล้ว`);render();};
 
-// Quick Log: กดปุ่มเดียว บันทึกเวลาปัจจุบันเป็น anchor ทันที
 window.quickLog=(sched,displayedTime)=>{
   const now=new Date();
   const realTime=fM(now.getHours()*60+now.getMinutes());
   const dt=S.wknd?'weekend':'weekday';const k=`${sched}_${dt}`;
   const base=SCHEDULES[sched]?.[dt]||[];
   if(!base.length){flash('⚠️ ไม่พบตาราง','err');return;}
-  
-  // หา original base time ที่ใกล้ displayedTime ที่สุด
-  // (displayedTime อาจถูก calibrate แล้ว ต้องหา original ที่ map ไป)
   if(!S.calib[k])S.calib[k]={anchors:[],deleted:[]};
   const cd=S.calib[k];
-  
-  // วิธี: calibrate base ทั้งหมด แล้วหาว่า displayedTime ตรงกับ original ตัวไหน
-  const calibrated=calibrate(base,cd.anchors,cd.deleted);
   let bestOrig=base[0],bestDist=9999;
   for(let bi=0;bi<base.length;bi++){
     if(cd.deleted?.includes(base[bi]))continue;
-    // ดูว่า calibrated version ของ base[bi] ตรงกับ displayedTime ไหม
-    const calVersion=calibrated[bi]; // ไม่แม่น เพราะ deleted อาจทำให้ index ขยับ
-    // ใช้วิธี simple: หา base time ที่ใกล้ displayedTime ที่สุด (ก่อน calibration)
     const dist=Math.abs(toM(base[bi])-toM(displayedTime));
     if(dist<bestDist){bestDist=dist;bestOrig=base[bi];}
   }
-  
-  // บันทึก anchor: original → realTime
   cd.anchors=[...cd.anchors.filter(a=>a.orig!==bestOrig),{orig:bestOrig,real:realTime}];
   S.calib[k]=cd;
   save();saveSess();
@@ -828,21 +929,7 @@ window.quickLog=(sched,displayedTime)=>{
   render();
 };
 
-// Log Walk: บันทึกเวลาเดินเปลี่ยนสายจริง
-// arriveStation = เวลาที่ลงจากรถสายก่อน
-window.logWalk=(walkKey,arriveStation)=>{
-  const now=new Date();
-  const realNow=fM(now.getHours()*60+now.getMinutes());
-  const mins=((toM(realNow)-toM(arriveStation))%1440+1440)%1440;
-  if(mins<=0||mins>30){flash('⚠️ เวลาไม่ถูกต้อง (ต้อง 1-30 นาที)','err');return;}
-  const today=new Date().toLocaleDateString('th-TH',{day:'numeric',month:'short'});
-  if(!S.walkLog[walkKey])S.walkLog[walkKey]=[];
-  S.walkLog[walkKey].push({mins,date:today});
-  if(S.walkLog[walkKey].length>15)S.walkLog[walkKey]=S.walkLog[walkKey].slice(-15);
-  save();flash(`🚶 เดิน ${mins} นาที บันทึกแล้ว`);render();
-};
-
-// Clock + auto-refresh (ทุก 15 วินาที เพื่อ highlight ขยับ real-time)
+// Clock + auto-refresh
 setInterval(()=>{const e=document.getElementById('ck');if(e){const n=new Date();e.textContent=fM(n.getHours()*60+n.getMinutes())+':'+String(n.getSeconds()).padStart(2,'0');}},1000);
 setInterval(()=>{if(S.page==='calc')render();},15000);
 render();
