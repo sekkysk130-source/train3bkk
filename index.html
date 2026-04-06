@@ -428,17 +428,16 @@ function calcJourney(){
     const sk=getSchedKey(step.line,step.dir);
     const trains=getSched(sk);
 
-    // ★ ถ้า user เลือก/แก้ไขขบวนนี้แล้ว ใช้เวลานั้น (ตรวจว่าไม่ก่อน cur)
+    // ★ ถ้า user เลือก/แก้ไขขบวนนี้แล้ว ใช้เวลานั้นเสมอ
+    // clear เฉพาะกรณี override เก่ากว่าเวลาต้นทางที่กรอก (stale จากเซสชันก่อน)
     let tr;
     const override=S.selectedTrains[i];
     if(override){
-      // ใช้ override เฉพาะเมื่อ >= cur (ไม่งั้น fallback หา next)
-      if(toM(override)>=toM(cur)){
-        tr=override;
-      } else {
-        // override เก่าไปแล้ว → clear แล้วหาใหม่
+      if(toM(override)<toM(S.time)){
         delete S.selectedTrains[i];
         tr=findNext(trains,cur);
+      } else {
+        tr=override;
       }
     } else {
       tr=findNext(trains,cur);
