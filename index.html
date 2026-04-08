@@ -625,12 +625,14 @@ function renderTrainPicker(leg){
   strip+=`</div>`;
 
   // ★ Edit row: แก้เวลาได้เองถ้ารถไม่ตรงตาราง
+  // ใช้ทั้ง onchange + oninput เพราะ iOS Safari fire onchange ช้า
   strip+=`<div class="train-edit-row">
     <div class="train-edit-label">✏️ แก้เวลา:</div>
     <input type="time" id="edit_train_${leg.legIdx}" value="${selTime}"
-      onchange="applyEditTrain(${leg.legIdx},this.value)">
+      onchange="applyEditTrain(${leg.legIdx},this.value)"
+      oninput="applyEditTrain(${leg.legIdx},this.value)">
     <button class="btn train-edit-apply"
-      onclick="applyEditTrain(${leg.legIdx},document.getElementById('edit_train_${leg.legIdx}').value)">
+      onclick="applyEditTrain(${leg.legIdx},document.getElementById('edit_train_${leg.legIdx}').value,true)">
       ใช้เวลานี้
     </button>
   </div>`;
@@ -763,8 +765,8 @@ function renderCalc(el){
         </div>
       </div>`;
 
-      // ★ Train Picker (ย่อ: แสดงแค่ strip ไม่มี edit row เพราะ inactive)
-      h+=renderTrainPickerCompact(leg);
+      // ★ Train Picker เต็ม (มี edit row) ทุก leg ไม่ว่า active หรือเปล่า
+      h+=renderTrainPicker(leg);
 
       h+=`<div style="display:flex;align-items:center;gap:5px;margin:5px 0"><div style="flex:1;height:1px;background:${leg.lc}20"></div><span style="font-size:8px;color:#475569">🕐 ${leg.travel}m ${avgLbl}</span><div style="flex:1;height:1px;background:${leg.lc}20"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:3px">
@@ -846,17 +848,23 @@ window.pickTrain=(legIdx,trainTime)=>{
   render();
 };
 
-// ★ แก้เวลา manual แล้วกด apply
-window.applyEditTrain=(legIdx,timeVal)=>{
-  if(!timeVal)return;
-  S.selectedTrains[legIdx]=timeVal;
-  // Clear downstream overrides
-  const legCount=S.route?S.route.filter(s=>s.type==='train').length:0;
-  for(let i=legIdx+1;i<legCount;i++){
-    delete S.selectedTrains[i];
-  }
-  flash(`✦ ใช้เวลา ${timeVal}`);
-  render();
+// ★ debounce timer สำหรับ edit train time
+let _editTrainTimer=null;
+
+// ★ แก้เวลา manual แล้วกด apply (หรือ oninput debounced)
+window.applyEditTrain=(legIdx,timeVal,immediate)=>{
+  if(!timeVal||timeVal.length<5)return; // ยังพิมพ์ไม่ครบ HH:MM
+  clearTimeout(_editTrainTimer);
+  const doApply=()=>{
+    S.selectedTrains[legIdx]=timeVal;
+    // Clear downstream overrides
+    const legCount=S.route?S.route.filter(s=>s.type==='train').length:0;
+    for(let i=legIdx+1;i<legCount;i++){delete S.selectedTrains[i];}
+    if(!immediate)flash(`✦ ใช้เวลา ${timeVal}`);
+    render();
+  };
+  if(immediate){doApply();}
+  else{_editTrainTimer=setTimeout(doApply,600);} // รอ 600ms หลัง input หยุด
 };
 
 // ★ Reset override กลับเป็น auto
